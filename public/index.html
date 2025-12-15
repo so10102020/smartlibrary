@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>図書館蔵書検索 | LibraryCirculationSystem</title>
+    <link rel="stylesheet" href="styles.css">
+
+    <!-- Firebase SDKs (必要最小限) -->
+    <script defer src="/__/firebase/12.4.0/firebase-app-compat.js"></script>
+    <script defer src="/__/firebase/12.4.0/firebase-firestore-compat.js"></script>
+    <script defer src="/__/firebase/12.4.0/firebase-auth-compat.js"></script>
+    <script defer src="/__/firebase/init.js?useEmulator=true"></script>
+    <script defer src="firebase-config.js"></script>
+    <script defer src="firebase-init.js"></script>
+
+    <!-- アプリ用スクリプト -->
+    <script defer src="opac.js"></script>
+    <script defer src="guard.js"></script>
+  </head>
+  <body>
+    <!-- デスクトップ用ヘッダーナビ -->
+    <header class="header-nav">
+      <div class="nav-container">
+        <div class="nav-brand">
+          <h1>📚 Library System</h1>
+        </div>
+        <nav class="nav-menu">
+          <a href="index.html" class="nav-link active">
+            <span class="nav-icon">🔍</span>
+            <span class="nav-text">検索</span>
+          </a>
+          <a href="circulation.html" class="nav-link">
+            <span class="nav-icon">📱</span>
+            <span class="nav-text">貸出・返却</span>
+          </a>
+          <a href="mypage.html" class="nav-link">
+            <span class="nav-icon">👤</span>
+            <span class="nav-text">マイページ</span>
+          </a>
+          <a href="admin.html" class="nav-link">
+            <span class="nav-icon">⚙️</span>
+            <span class="nav-text">管理</span>
+          </a>
+        </nav>
+        <div class="nav-actions">
+          <button class="logout-btn" onclick="signOut()">ログアウト</button>
+        </div>
+      </div>
+    </header>
+
+    <!-- モバイル用ボトムナビ -->
+    <nav class="bottom-nav">
+      <a href="index.html" class="bottom-nav-item active">
+        <span class="bottom-nav-icon">🔍</span>
+        <span class="bottom-nav-text">検索</span>
+      </a>
+      <a href="circulation.html" class="bottom-nav-item">
+        <span class="bottom-nav-icon">📱</span>
+        <span class="bottom-nav-text">貸出・返却</span>
+      </a>
+      <a href="mypage.html" class="bottom-nav-item">
+        <span class="bottom-nav-icon">👤</span>
+        <span class="bottom-nav-text">マイページ</span>
+      </a>
+      <a href="admin.html" class="bottom-nav-item">
+        <span class="bottom-nav-icon">⚙️</span>
+        <span class="bottom-nav-text">管理</span>
+      </a>
+    </nav>
+
+    <main class="container">
+      <!-- ヒーローセクション -->
+      <div class="hero-section">
+        <div class="hero-content">
+          <h1 class="hero-title">📚 図書館蔵書検索</h1>
+          <p class="hero-subtitle">お探しの本を素早く見つけましょう</p>
+        </div>
+      </div>
+
+      <!-- 検索セクション -->
+      <div class="search-section">
+        <div class="search-container">
+          <div class="search-bar-enhanced">
+            <div class="search-input-wrapper">
+              <span class="search-icon">🔍</span>
+              <input 
+                type="text" 
+                id="searchInput" 
+                placeholder="タイトル、著者、キーワードで検索..." 
+                aria-label="検索キーワード"
+                class="search-input-enhanced"
+              >
+            </div>
+            <button onclick="searchBooks()" class="search-btn-enhanced" aria-label="検索実行">
+              検索
+            </button>
+          </div>
+          
+          <!-- 検索フィルター（オプション） -->
+          <div class="search-filters">
+            <details class="filter-toggle">
+              <summary>詳細検索</summary>
+              <div class="filter-options">
+                <div class="filter-row">
+                  <select id="categoryFilter" class="filter-select">
+                    <option value="">すべてのカテゴリ</option>
+                    <option value="文学">文学</option>
+                    <option value="科学">科学</option>
+                    <option value="歴史">歴史</option>
+                    <option value="実用書">実用書</option>
+                  </select>
+                  <select id="statusFilter" class="filter-select">
+                    <option value="">すべての状態</option>
+                    <option value="available">貸出可能</option>
+                    <option value="checked_out">貸出中</option>
+                  </select>
+                </div>
+              </div>
+            </details>
+          </div>
+        </div>
+      </div>
+
+      <!-- 検索結果セクション -->
+      <div class="results-section">
+        <div class="results-header">
+          <h2 id="resultsTitle">検索結果</h2>
+          <div id="resultsCount" class="results-count"></div>
+        </div>
+        <div id="resultsContainer" class="results-grid" aria-live="polite">
+          <!-- 初期メッセージ -->
+          <div class="no-results-message">
+            <div class="no-results-icon">📖</div>
+            <h3>検索を開始してください</h3>
+            <p>上の検索ボックスにキーワードを入力して、お探しの本を見つけましょう。</p>
+          </div>
+        </div>
+        
+        <!-- ローディング表示 -->
+        <div id="loadingIndicator" class="loading-indicator" style="display: none;">
+          <div class="spinner"></div>
+          <p>検索中...</p>
+        </div>
+      </div>
+
+      <!-- 本の詳細モーダル -->
+      <div id="detailModal" class="modal" aria-hidden="true" role="dialog" aria-modal="true" style="display:none;">
+        <div class="modal-content">
+          <button class="modal-close" onclick="closeBookDetail()" aria-label="閉じる">×</button>
+          <div id="detailBody">
+            <!-- JSで詳細情報を描画 -->
+          </div>
+          <div class="modal-actions">
+            <button id="detailReserveBtn" class="reserve-btn" onclick="confirmReserveFromDetail()">この本を予約</button>
+          </div>
+        </div>
+        <div class="modal-backdrop" onclick="closeBookDetail()"></div>
+      </div>
+    </main>
+  </body>
+</html>

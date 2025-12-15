@@ -1,0 +1,35 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // users コレクション: 自分自身のユーザードキュメントのみ読み書き可能
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // books コレクション: ログイン済みユーザーは参照のみ可、管理系クライアントからの登録更新を想定して書き込みも許可
+    // もし「一般利用者は読み取りのみ、書き込みは別バックエンド経由」にしたい場合は write 条件をより厳しくしてください。
+    match /books/{bookId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
+
+    // loans コレクション: ログイン済みなら参照可能。書き込みもクライアントから行っているので同様に許可。
+    match /loans/{loanId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
+
+    // reservations コレクション: 予約機能用。ログイン済みなら参照・書き込み可
+    match /reservations/{reservationId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
+
+    // その他のコレクションはデフォルト deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>マイページ - 図書館システム</title>
+  <link rel="stylesheet" href="styles.css" />
+  <!-- Firebase SDK v8 -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
+  <script src="firebase-config.js"></script>
+  <script src="firebase-init.js"></script>
+  <script src="guard.js"></script>
+  <script src="mypage.js" defer></script>
+</head>
+<body class="page-body">
+  <!-- ...existing global nav/header if any... -->
+  <header class="header-nav">
+    <div class="nav-container">
+      <div class="nav-brand">
+        <h1>👤 マイページ</h1>
+      </div>
+      <nav class="nav-menu">
+        <a href="index.html" class="nav-link">🔍 検索</a>
+        <a href="circulation.html" class="nav-link">📱 貸出・返却</a>
+        <a href="mypage.html" class="nav-link active">👤 マイページ</a>
+        <a href="admin.html" class="nav-link">⚙️ 管理</a>
+      </nav>
+      <div class="nav-actions">
+        <span id="userInfo" class="nav-user-info"></span>
+        <button class="logout-btn" onclick="signOut()">ログアウト</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- モバイル用ボトムナビ -->
+  <nav class="bottom-nav">
+    <a href="index.html" class="bottom-nav-item">
+      <span class="bottom-nav-icon">🔍</span>
+      <span class="bottom-nav-text">検索</span>
+    </a>
+    <a href="circulation.html" class="bottom-nav-item">
+      <span class="bottom-nav-icon">📱</span>
+      <span class="bottom-nav-text">貸出</span>
+    </a>
+    <a href="mypage.html" class="bottom-nav-item active">
+      <span class="bottom-nav-icon">👤</span>
+      <span class="bottom-nav-text">マイページ</span>
+    </a>
+  </nav>
+
+  <main class="container mypage-container">
+    <section class="mypage-section">
+      <h2>利用者情報</h2>
+      <div id="mypageUserCard" class="result-card">
+        <p>読み込み中...</p>
+      </div>
+    </section>
+
+    <section class="mypage-section">
+      <h2>現在借りている本</h2>
+      <div id="loansSummary" class="summary"></div>
+      <div id="loansList" class="mypage-loans-list"></div>
+    </section>
+  </main>
+</body>
+</html>

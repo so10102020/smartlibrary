@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>図書登録 - 図書館システム</title>
+    <link rel="stylesheet" href="styles.css">
+    <!-- Firebase SDK v8 (統一) -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
+    <!-- Firebase設定 -->
+    <script src="firebase-config.js"></script>
+    <script src="firebase-init.js"></script>
+    <!-- Excel/CSV処理用ライブラリ -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <!-- 追加: CSV 解析ライブラリ（PapaParse） -->
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+</head>
+<body>
+  <!-- デスクトップ用ヘッダーナビ -->
+  <header class="header-nav">
+    <div class="nav-container">
+      <div class="nav-brand">
+        <h1>📚 Library System</h1>
+      </div>
+      <nav class="nav-menu">
+        <a href="index.html" class="nav-link">
+          <span class="nav-icon">🔍</span>
+          <span class="nav-text">検索</span>
+        </a>
+        <a href="circulation.html" class="nav-link active">
+          <span class="nav-icon">📱</span>
+          <span class="nav-text">貸出・返却</span>
+        </a>
+        <a href="mypage.html" class="nav-link">
+          <span class="nav-icon">👤</span>
+          <span class="nav-text">マイページ</span>
+        </a>
+        <a href="admin.html" class="nav-link">
+          <span class="nav-icon">⚙️</span>
+          <span class="nav-text">管理</span>
+        </a>
+      </nav>
+      <div class="nav-actions">
+        <button class="logout-btn" onclick="signOut()">ログアウト</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- モバイル用ボトムナビ -->
+  <nav class="bottom-nav">
+    <a href="index.html" class="bottom-nav-item">
+      <span class="bottom-nav-icon">🔍</span>
+      <span class="bottom-nav-text">検索</span>
+    </a>
+    <a href="circulation.html" class="nav-link active">
+      <span class="nav-icon">📱</span>
+      <span class="nav-text">貸出・返却</span>
+    </a>
+    <a href="mypage.html" class="bottom-nav-item">
+      <span class="bottom-nav-icon">👤</span>
+      <span class="bottom-nav-text">マイページ</span>
+    </a>
+    <a href="admin.html" class="bottom-nav-item">
+      <span class="bottom-nav-icon">⚙️</span>
+      <span class="bottom-nav-text">管理</span>
+    </a>
+  </nav>
+    <div class="container">
+        <header>
+            <h1>📚 図書登録システム</h1>
+            <div class="auth-info">
+                <span id="userInfo"></span>
+                <button onclick="logout()" class="btn btn-secondary">ログアウト</button>
+            </div>
+        </header>
+
+        <!-- 管理者認証セクション -->
+        <section id="adminAuthSection" class="auth-section">
+            <h2>🔐 管理者認証</h2>
+            <div id="adminAuthMsg" class="message">ログイン後、自動で管理者権限を確認します</div>
+            <button id="verifyAdminBtn" onclick="verifyAdmin()" class="btn btn-primary">権限を再確認</button>
+        </section>
+
+        <!-- 図書登録メイン -->
+        <main id="mainContent" style="display: none;">
+            <nav class="tab-nav">
+                <button class="tab-btn active" onclick="showTab('scan')">📱 スキャン登録</button>
+                <button class="tab-btn" onclick="showTab('manual')">✏️ 手動登録</button>
+                <button class="tab-btn" onclick="showTab('batch')">📋 一括登録</button>
+                <button class="tab-btn" onclick="showTab('import')">📂 インポート</button>
+                <button class="tab-btn" onclick="showTab('admin')">🔧 管理者設定</button>
+                <button class="tab-btn" onclick="showTab('loans'); initLoansDashboard()">📊 貸出状況</button>
+            </nav>
+
+            <!-- スキャン登録タブ -->
+            <div id="scanTab" class="tab-content active">
+                <h2>📱 ISBNスキャン登録</h2>
+                
+                <!-- カメラ部分 -->
+                <div class="scanner-section">
+                    <div class="scanner-container">
+                        <video id="cameraPreview" style="display: none;"></video>
+                    </div>
+                    <div class="camera-controls">
+                        <button id="startCameraBtn" onclick="startBookScanner()" class="btn btn-primary">カメラ開始</button>
+                        <button id="stopCameraBtn" onclick="stopBookScanner()" class="btn btn-secondary" style="display: none;">カメラ停止</button>
+                    </div>
+                    <div id="scanProgress" class="progress-text"></div>
+                </div>
+
+                <!-- スキャン結果 -->
+                <div id="scanResultSection" style="display: none;">
+                    <h3>📖 書籍情報</h3>
+                    <div id="bookInfoCard" class="book-info-card"></div>
+                    <div class="form-actions">
+                        <button onclick="registerScannedBook()" class="btn btn-success">📚 この本を登録</button>
+                        <button onclick="clearScanResult()" class="btn btn-secondary">クリア</button>
+                    </div>
+                </div>
+
+                <!-- 一括スキャン結果 -->
+                <div id="batchScanSection" style="display: none;">
+                    <h3>📚 スキャン済み書籍一覧</h3>
+                    <div class="batch-controls">
+                        <button onclick="registerAllScanned()" class="btn btn-success">全て登録</button>
+                        <button onclick="clearBatchScan()" class="btn btn-secondary">クリア</button>
+                        <span id="batchCount">0冊</span>
+                    </div>
+                    <div id="batchBookList" class="batch-book-list"></div>
+                </div>
+            </div>
+
+            <!-- 手動登録タブ -->
+            <div id="manualTab" class="tab-content">
+                <h2>✏️ 手動登録</h2>
+                <form id="manualBookForm" class="book-form">
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="manualIsbn">ISBN (13桁):</label>
+                            <input type="text" id="manualIsbn" placeholder="9784567890123" title="ISBN 13桁を入力">
+                            <button type="button" onclick="fetchBookDataByIsbn()" class="btn btn-sm" title="入力したISBNから情報取得">情報取得</button>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="manualTitle">タイトル *:</label>
+                            <input type="text" id="manualTitle" placeholder="書籍のタイトルを入力" required title="タイトルを入力">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="manualAuthors">著者:</label>
+                            <input type="text" id="manualAuthors" placeholder="著者名を入力" title="著者名を入力">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="manualPublisher">出版社:</label>
+                            <input type="text" id="manualPublisher" placeholder="出版社名を入力" title="出版社名を入力">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="manualPublished">出版年:</label>
+                            <input type="text" id="manualPublished" placeholder="例: 2023" title="出版年を入力">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="manualSeries">シリーズ:</label>
+                            <input type="text" id="manualSeries" placeholder="シリーズ名を入力" title="シリーズ名を入力">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="manualPages">頁数:</label>
+                            <input type="number" id="manualPages" placeholder="ページ数を入力" title="ページ数を入力">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="manualSize">大きさ:</label>
+                            <input type="text" id="manualSize" placeholder="A5, B6など" title="大きさ/判型を入力">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="manualPrice">定価:</label>
+                            <input type="number" id="manualPrice" placeholder="円" title="定価を入力">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="manualStock">在庫数 *:</label>
+                            <input type="number" id="manualStock" value="1" placeholder="在庫数を入力" required min="1" title="在庫冊数を入力">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="manualCategory">分類:</label>
+                            <input type="text" id="manualCategory" placeholder="図書分類を入力" title="分類を入力">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="manualNotes">備考:</label>
+                            <textarea id="manualNotes" rows="3" placeholder="備考・特記事項があれば入力" title="備考を入力"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label for="manualStatus">本の状態:</label>
+                            <select id="manualStatus" title="本の状態を選択">
+                                <option value="在架" selected>在架</option>
+                                <option value="貸出中">貸出中</option>
+                                <option value="除籍">除籍</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="manualCopyType">複本（親/子/空白）:</label>
+                            <select id="manualCopyType" title="複本の種別を選択">
+                                <option value="">空白</option>
+                                <option value="親">親</option>
+                                <option value="子">子</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="manualAccessionNumber">登録番号:</label>
+                            <input type="text" id="manualAccessionNumber" placeholder="図書館独自の番号" title="登録番号を入力">
+                        </div>
+                        <div class="form-group">
+                            <label for="manualCallNumber">請求記号:</label>
+                            <input type="text" id="manualCallNumber" placeholder="例: 527-ｵ / 933.7-ｼｿ-1" title="請求記号を入力">
+                        </div>
+                        <div class="form-group">
+                            <label for="manualMaterialType">資料区分:</label>
+                            <input type="text" id="manualMaterialType" placeholder="図書など" value="図書" title="資料区分を入力">
+                        </div>
+                        <div class="form-group">
+                            <label for="manualAcquisitionType">受入区分:</label>
+                            <input type="text" id="manualAcquisitionType" placeholder="購入/寄贈 など" title="受入区分を入力">
+                        </div>
+                        <div class="form-group">
+                            <label for="manualAcquisitionPrice">受入価格:</label>
+                            <input type="number" id="manualAcquisitionPrice" placeholder="円" title="受入価格を入力">
+                        </div>
+                        <div class="form-group">
+                            <label for="manualAcquisitionDate">受入日付:</label>
+                            <input type="date" id="manualAcquisitionDate" placeholder="YYYY-MM-DD" title="受入日を入力">
+                        </div>
+                        <div class="form-group">
+                            <label for="manualCurrentLocation">現在の配架:</label>
+                            <input type="text" id="manualCurrentLocation" placeholder="図書館/廃棄/文庫スタンド など" title="現在の配架場所を入力">
+                        </div>
+                        <div class="form-group">
+                            <label for="manualShelfLocation">配架場所:</label>
+                            <input type="text" id="manualShelfLocation" placeholder="岩波ジュニア新書 等" title="配架場所を入力">
+                        </div>
+                        <div class="form-group">
+                            <label for="manualTempLocation">一時配架:</label>
+                            <input type="text" id="manualTempLocation" placeholder="一時配置があれば入力" title="一時配架を入力">
+                        </div>
+                        <div class="form-group">
+                            <label for="manualLoanPolicy">貸出区分:</label>
+                            <input type="text" id="manualLoanPolicy" placeholder="一般貸出 など" title="貸出区分を入力">
+                        </div>
+                        <div class="form-group">
+                            <label for="manualLoanTotal">貸出累積:</label>
+                            <input type="number" id="manualLoanTotal" value="0" min="0" title="貸出累積を入力">
+                        </div>
+                        <div class="form-group">
+                            <label for="manualTags">タグ:</label>
+                            <input type="text" id="manualTags" placeholder="カンマ区切りで入力可" title="タグを入力">
+                        </div>
+                    </div>
+                    
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-success">📚 図書を登録</button>
+                        <button type="button" onclick="clearManualForm()" class="btn btn-secondary">クリア</button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- 一括登録タブ -->
+            <div id="batchTab" class="tab-content">
+                <h2>📋 一括登録</h2>
+                <div class="batch-section">
+                    <div class="form-group">
+                        <label>ISBNリスト (1行に1つ):</label>
+                        <textarea id="isbnBatchList" rows="10" placeholder="9784567890123&#10;9784567890124&#10;9784567890125"></textarea>
+                    </div>
+                    <div class="form-actions">
+                        <button onclick="processBatchIsbn()" class="btn btn-primary">📖 書籍情報を取得</button>
+                        <button onclick="clearBatchList()" class="btn btn-secondary">クリア</button>
+                    </div>
+                    
+                    <div id="batchProgress" class="progress-section" style="display: none;">
+                        <div class="progress-bar">
+                            <div id="progressFill" class="progress-fill"></div>
+                        </div>
+                        <div id="progressText">処理中...</div>
+                    </div>
+                    
+                    <div id="batchResults" class="batch-results"></div>
+                </div>
+            </div>
+
+            <!-- インポートタブ -->
+            <div id="importTab" class="tab-content">
+                <h2>📂 CSVインポート</h2>
+                <div class="import-section">
+                    <div class="form-group">
+                        <label>CSVファイル:</label>
+                        <input type="file" id="csvFileInput" accept=".csv,.xlsx,.xls" title="CSVまたはExcelファイルを選択してください" onchange="previewCsvFile()">
+                        <div class="file-info">
+                            対応形式: CSV, Excel (.xlsx, .xls)<br>
+                            必須列: タイトル（例: タイトル, タイトル (巻・版), 書名）<br>
+                            推奨列: ISBN, 著者, 出版者, 出版年, 頁数, 請求記号, 複本, 状態, 資料区分, 受入区分, 受入価格, 現在の配架, 配架場所, 一時配架, 貸出累積, 備考
+                        </div>
+                    </div>
+                    
+                    <div id="csvPreview" class="csv-preview" style="display: none;">
+                        <h3>プレビュー</h3>
+                        <div id="csvPreviewTable"></div>
+                        <div class="form-actions">
+                            <button onclick="importCsvData()" class="btn btn-success">📚 インポート実行</button>
+                            <button onclick="clearCsvImport()" class="btn btn-secondary">クリア</button>
+                        </div>
+                    </div>
+                    
+                    <div id="importProgress" class="progress-section" style="display: none;">
+                        <div class="progress-bar">
+                            <div id="importProgressFill" class="progress-fill"></div>
+                        </div>
+                        <div id="importProgressText">処理中...</div>
+                    </div>
+                    
+                    <div id="importResults" class="import-results"></div>
+                </div>
+            </div>
+            <div id="adminTab" class="tab-content">
+              <div id="adminManagementSection"></div>
+                <div id="adminManagementContent"></div>
+                <button onclick="showAdminManagement()" class="btn btn-primary">管理者設定を表示</button>
+              </div>
+            </div>
+            <div id="loansTab" class="tab-content">
+              <h2>📊 貸出状況</h2>
+              <div class="filters-grid">
+                <div class="form-group">
+                  <label for="loanSearchTerm">検索:</label>
+                  <input id="loanSearchTerm" type="text" placeholder="氏名/ID/書名/ISBN を検索" oninput="refreshLoans()">
+                </div>
+                <div class="form-group">
+                  <label for="loanStatusFilter">状態:</label>
+                  <select id="loanStatusFilter" onchange="refreshLoans()" title="貸出状態フィルタ">
+                    <option value="active" selected>貸出中</option>
+                    <option value="returned">返却済み</option>
+                    <option value="all">すべて</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label><input id="loanOverdueOnly" type="checkbox" onchange="refreshLoans()"> 延滞のみ</label>
+                </div>
+                <div class="form-group">
+                  <button class="btn btn-primary" onclick="refreshLoans()">更新</button>
+                  <button class="btn btn-secondary" onclick="exportLoansCsv()">CSVエクスポート</button>
+                </div>
+              </div>
+              <div id="loansSummary" class="summary"></div>
+              <div id="loansTableContainer" class="table-responsive"></div>
+            </div>
+        </main>
+
+        <!-- 実行結果表示セクション -->
+        <section id="actionResultSection" style="display: none;">
+            <div id="actionResult" class="result-card"></div>
+        </section>
+    </div>
+
+    <!-- 設定とスクリプトを正しい順序で読み込み -->
+    <script src="firebase-config.js"></script>
+    <script src="firebase-init.js"></script>
+    <script src="guard.js"></script>
+    <script src="admin-books.js"></script>
+</body>
+</html>
