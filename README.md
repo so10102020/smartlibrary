@@ -1,1 +1,1 @@
-# 図書館循環システム (Library Circulation System)
+# 図書館効率化システム (Smart Library)
