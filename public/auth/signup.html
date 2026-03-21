@@ -4,16 +4,21 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>新規登録 | LibraryCirculationSystem</title>
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="../styles/styles.css">
 
-    <!-- Firebase SDKs -->
-    <script defer src="/__/firebase/12.4.0/firebase-app-compat.js"></script>
-    <script defer src="/__/firebase/12.4.0/firebase-auth-compat.js"></script>
-    <script defer src="/__/firebase/12.4.0/firebase-firestore-compat.js"></script>
-    <script defer src="/__/firebase/init.js?useEmulator=true"></script>
-    <script defer src="firebase-init.js"></script>
+    <!-- Firebase設定を先に読み込む -->
+    <script src="../lib/firebase-config.js"></script>
+    
+    <!-- Firebase SDKs（deferを削除して同期読み込み） -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+    
+    <!-- Firebase初期化 -->
+    <script src="../lib/firebase-init.js"></script>
 
-    <script defer src="signup.js"></script>
+    <!-- 新規登録スクリプト（絶対パスで指定） -->
+    <script defer src="/auth/signup.js"></script>
   </head>
   <body class="auth-body auth-simple">
     <div class="auth-wrapper">
@@ -45,7 +50,7 @@
             <div class="form-group">
               <label for="email" class="form-label">メールアドレス</label>
               <div class="input-wrapper">
-                <input id="email" type="email" placeholder="example@school.ac.jp" class="auth-input" required>
+                <input id="email" type="email" placeholder="example@it-mirai-h.ibk.ed.jp" class="auth-input" required>
               </div>
             </div>
 

@@ -26,7 +26,8 @@
     } catch (error) {
       console.error('Sign out error:', error);
     } finally {
-      location.replace('login.html');
+      // ログインページにリダイレクト
+      location.replace('/login');
     }
   }
 
@@ -35,18 +36,19 @@
       const auth = await waitForFirebase();
       auth.onAuthStateChanged((user) => {
         if (!user && !isAuthPage()) {
-          location.replace('login.html');
+          // 未ログインの場合はログインページへ
+          location.replace('/login');
           return;
         }
         if (user && isAuthPage()) {
-          // 認証画面にいるがログイン済みの場合はトップへ
-          location.replace('index.html');
+          // 認証画面にいるがログイン済みの場合はホームへ
+          location.replace('/');
         }
       });
     } catch (error) {
       console.error('Auth guard initialization failed:', error);
       if (!isAuthPage()) {
-        location.replace('login.html');
+        location.replace('/login');
       }
     }
   });

@@ -4,31 +4,47 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>マイページ - 図書館システム</title>
-  <link rel="stylesheet" href="styles.css" />
-  <!-- Firebase SDK v8 -->
+  <link rel="stylesheet" href="../styles/styles.css" />
+  
+  <!-- Firebase設定を先に読み込む -->
+  <script src="../lib/firebase-config.js"></script>
+  
+  <!-- Firebase SDKs（同期読み込み） -->
   <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
-  <script src="firebase-config.js"></script>
-  <script src="firebase-init.js"></script>
-  <script src="guard.js"></script>
+  
+  <!-- Firebase初期化 -->
+  <script src="../lib/firebase-init.js"></script>
+  <script src="../lib/guard.js"></script>
   <script src="mypage.js" defer></script>
 </head>
 <body class="page-body">
-  <!-- ...existing global nav/header if any... -->
+  <!-- デスクトップ用ヘッダーナビ -->
   <header class="header-nav">
     <div class="nav-container">
       <div class="nav-brand">
-        <h1>👤 マイページ</h1>
+        <h1>📚 Library System</h1>
       </div>
       <nav class="nav-menu">
-        <a href="index.html" class="nav-link">🔍 検索</a>
-        <a href="circulation.html" class="nav-link">📱 貸出・返却</a>
-        <a href="mypage.html" class="nav-link active">👤 マイページ</a>
-        <a href="admin.html" class="nav-link">⚙️ 管理</a>
+        <a href="/" class="nav-link">
+          <span class="nav-icon">🔍</span>
+          <span class="nav-text">検索</span>
+        </a>
+        <a href="/user/circulation.html" class="nav-link">
+          <span class="nav-icon">📱</span>
+          <span class="nav-text">貸出・返却</span>
+        </a>
+        <a href="/user/mypage.html" class="nav-link active">
+          <span class="nav-icon">👤</span>
+          <span class="nav-text">マイページ</span>
+        </a>
+        <a href="/admin" class="nav-link">
+          <span class="nav-icon">⚙️</span>
+          <span class="nav-text">管理</span>
+        </a>
       </nav>
       <div class="nav-actions">
-        <span id="userInfo" class="nav-user-info"></span>
         <button class="logout-btn" onclick="signOut()">ログアウト</button>
       </div>
     </div>
@@ -36,17 +52,21 @@
 
   <!-- モバイル用ボトムナビ -->
   <nav class="bottom-nav">
-    <a href="index.html" class="bottom-nav-item">
+    <a href="/" class="bottom-nav-item">
       <span class="bottom-nav-icon">🔍</span>
       <span class="bottom-nav-text">検索</span>
     </a>
-    <a href="circulation.html" class="bottom-nav-item">
+    <a href="/user/circulation.html" class="bottom-nav-item">
       <span class="bottom-nav-icon">📱</span>
-      <span class="bottom-nav-text">貸出</span>
+      <span class="bottom-nav-text">貸出・返却</span>
     </a>
-    <a href="mypage.html" class="bottom-nav-item active">
+    <a href="/user/mypage.html" class="bottom-nav-item active">
       <span class="bottom-nav-icon">👤</span>
       <span class="bottom-nav-text">マイページ</span>
+    </a>
+    <a href="/admin" class="bottom-nav-item">
+      <span class="bottom-nav-icon">⚙️</span>
+      <span class="bottom-nav-text">管理</span>
     </a>
   </nav>
 

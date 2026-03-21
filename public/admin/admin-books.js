@@ -247,7 +247,8 @@
       const adminAuthSection = document.getElementById('adminAuthSection');
       if (adminAuthSection) adminAuthSection.style.display = 'none';
       showElement('mainContent', true);
-      showTab('scan');
+      showTab('dashboard');
+      initDashboard();
     } catch (error) {
       console.error('管理者認証エラー:', error);
       showMessage('adminAuthMsg', `認証エラー: ${error.message}`, 'error');
@@ -272,8 +273,8 @@
 
   // バーコードスキャナー開始（グローバル）
   function startBookScanner() {
-    // バーコードスキャナーのテストページに移動
-    window.location.href = 'brsc-test.html';
+    // 新しい専用スキャナーページに遷移
+    window.location.href = 'admin-barcode-scanner.html';
   }
 
   // 書籍情報API取得
@@ -1022,10 +1023,16 @@
     const publisher = getFirst(row, ['publisher','出版社','出版者']);
     const published = getFirst(row, ['published','出版年','発行年','刊行年','出版日']);
     const series = getFirst(row, ['series','シリーズ']);
-    const pagesStr = getFirst(row, ['pages','頁数','ページ','ページ数']);
+    
+    // 🔥 頁数を先に取得（在庫数と混同しないように）
+    const pagesStr = getFirst(row, ['pages','頁数','ページ','ページ数','page']);
+    
     const size = getFirst(row, ['size','大きさ','判型']);
-    const priceStr = getFirst(row, ['price','定価','価格','受入価格']); // 定価 or 受入価格
-    const stockStr = getFirst(row, ['stock_count','在庫数','在庫','冊数','stock']); // 数量系のみ
+    const priceStr = getFirst(row, ['price','定価','価格']);
+    
+    // 🔥 在庫数：明示的に「在庫」「冊数」「stock」列のみを対象
+    // 「頁数」「ページ」は除外
+    const stockStr = getFirst(row, ['stock_count','在庫数','在庫','冊数','stock','数量','部数']);
 
     // 追加の館内フィールド
     const status = getFirst(row, ['状態','本の状態','status']);
@@ -1043,20 +1050,28 @@
     const loanTotalStr = getFirst(row, ['貸出累計','貸出累積','loan_total']);
     const tagsStr = getFirst(row, ['タグ','tags']);
 
-    // 122p 等を数値化
-    const pagesNumFromStr = pagesStr ? parseInt(String(pagesStr).replace(/[^0-9]/g,'')) : NaN;
-    // 通常のページ数（今回のCSVでは頁数=在庫の場合があるため、デフォルトはnull）
-    let pages = null;
+    // 🔥 頁数を数値化（"122p" → 122）
+    const pagesNum = pagesStr ? parseInt(String(pagesStr).replace(/[^0-9]/g,'')) || null : null;
 
     const price = priceStr ? parseInt(String(priceStr).replace(/[^0-9]/g,'')) || null : null;
 
-    // 在庫は stock 系が優先。無ければ頁数から導出
-    let stock = 1;
+    // 🔥 在庫数の処理を改善：
+    // 1. stock系列の列が明示的にある場合のみ、その値を使用
+    // 2. 空文字や存在しない場合はデフォルト1
+    // 3. 頁数（通常100-500ページ）が誤って在庫数にならないようチェック
+    let stock = 1; // デフォルト値
+    
     if (stockStr && String(stockStr).trim() !== '') {
-      stock = parseInt(String(stockStr).replace(/[^0-9]/g,'')) || 1;
-    } else if (!isNaN(pagesNumFromStr)) {
-      stock = pagesNumFromStr || 1;
-      pages = null; // 頁数列を在庫として使った場合はページ数は未設定
+      const parsedStock = parseInt(String(stockStr).replace(/[^0-9]/g,''));
+      // 🔥 在庫数の妥当性チェック：1-999の範囲内
+      // 頁数（100-500ページ）が間違って入らないように上限を設定
+      if (parsedStock >= 1 && parsedStock <= 999) {
+        stock = parsedStock;
+      } else if (parsedStock > 999) {
+        // 明らかに異常値の場合はデフォルト1に戻す
+        console.warn(`異常な在庫数を検出: ${parsedStock} → 1に修正`);
+        stock = 1;
+      }
     }
 
     const acquisitionPrice = acquisitionPriceStr ? parseInt(String(acquisitionPriceStr).replace(/[^0-9]/g,'')) || null : null;
@@ -1069,13 +1084,12 @@
       publisher,
       published,
       series,
-      pages,
+      pages: pagesNum,
       size,
       price,
-      stock_count: stock,
+      stock_count: stock, // 🔥 修正済み：デフォルト1、上限999
       category: getFirst(row, ['category','分類','ジャンル']),
       notes: getFirst(row, ['notes','備考','メモ','注記']),
-      // 追加フィールド
       status,
       copy_type: copyType,
       accession_number: accessionNumber,
@@ -1253,7 +1267,7 @@
 
   async function fetchLoans(status){
     const col = db.collection('loans');
-    const limitN = 500;
+    const limitN = 100; // 🔥 500件→100件に削減
     let snaps = [];
     if (status === 'all') {
       const [a, r] = await Promise.all([
@@ -1415,6 +1429,10 @@
       rows = filterSearch(rows);
       rows = applyOverdueFilter(rows);
       renderLoansTable(rows);
+      
+      // 読み込み完了後、結果表示を非表示にする
+      const resultSection = $('actionResultSection');
+      if (resultSection) resultSection.style.display = 'none';
     } catch (e){
       console.error(e);
       showActionResult('エラー', '貸出状況の読み込みに失敗しました。', 'error');
@@ -1464,4 +1482,780 @@
   window.initLoansDashboard = initLoansDashboard;
   window.refreshLoans = refreshLoans;
   window.exportLoansCsv = exportLoansCsv;
+
+  // ===== ダッシュボード機能 =====
+  // 🔥 キャッシュ追加
+  let dashboardCache = null;
+  let dashboardCacheTime = null;
+  const DASHBOARD_CACHE_MS = 5 * 60 * 1000; // 🔥 5分間キャッシュ（2分→5分に延長）
+
+  async function initDashboard(){
+    try {
+      showActionResult('読み込み中', 'ダッシュボードデータを取得しています...', 'processing');
+      
+      // 🔥 キャッシュチェック
+      const now = Date.now();
+      if (dashboardCache && dashboardCacheTime && (now - dashboardCacheTime < DASHBOARD_CACHE_MS)) {
+        console.log('📊 ダッシュボードキャッシュ使用（読み込み0回）');
+        await renderDashboardFromCache(dashboardCache);
+        return;
+      }
+
+      // 🔥 limit削減: 各種統計は最新20件のみ（50件→20件）
+      const [booksSnap, loansSnap, usersSnap] = await Promise.all([
+        db.collection('books').orderBy('created_at', 'desc').limit(20).get(),
+        db.collection('loans').where('status', '==', 'active').limit(20).get(),
+        db.collection('users').limit(50).get()
+      ]);
+      
+      // キャッシュ保存
+      dashboardCache = {
+        totalBooks: booksSnap.size,
+        activeLoans: loansSnap.size,
+        totalUsers: usersSnap.size,
+        recentLoans: loansSnap.docs.slice(0, 5).map(d => ({ id: d.id, ...d.data() })),
+        overdueLoans: loansSnap.docs.filter(d => {
+          const due = d.data().due_at;
+          return due && ((due.toDate ? due.toDate() : new Date(due)) < new Date());
+        }).map(d => ({ id: d.id, ...d.data() }))
+      };
+      dashboardCacheTime = now;
+      console.log('📊 ダッシュボードキャッシュ更新（5分間有効）');
+
+      await renderDashboardFromCache(dashboardCache);
+    } catch(e){
+      console.error('Dashboard init error:', e);
+      showActionResult('エラー', 'ダッシュボードの読み込みに失敗しました', 'error');
+    }
+  }
+
+  async function renderDashboardFromCache(cache) {
+    setText('totalBooks', cache.totalBooks || 0);
+    setText('activeLoans', cache.activeLoans || 0);
+    setText('totalUsers', cache.totalUsers || 0);
+    
+    await renderRecentLoans(cache.recentLoans || []);
+    await renderOverdueList(cache.overdueLoans || []);
+    
+    showElement('actionResultSection', false);
+  }
+
+  async function renderRecentLoans(loans){
+    const container = $('dashRecentLoans');
+    if (!container) return;
+    
+    if (loans.length === 0) {
+      container.innerHTML = '<p style="color:#999;">貸出履歴はありません</p>';
+      return;
+    }
+
+    // ユーザー・書籍情報を取得
+    const userIds = new Set(loans.map(l => l.uid || l.user_id).filter(Boolean));
+    const bookIds = new Set(loans.map(l => l.book_id).filter(Boolean));
+    
+    const userMap = new Map();
+    const bookMap = new Map();
+    
+    await Promise.all([
+      Promise.all([...userIds].map(async uid => {
+        try {
+          const snap = await db.collection('users').doc(uid).get();
+          if (snap.exists) userMap.set(uid, snap.data());
+        } catch(e){}
+      })),
+      Promise.all([...bookIds].map(async bid => {
+        try {
+          const snap = await db.collection('books').doc(bid).get();
+          if (snap.exists) bookMap.set(bid, snap.data());
+        } catch(e){}
+      }))
+    ]);
+
+    let html = '<div class="recent-items">';
+    loans.forEach(loan => {
+      const uid = loan.uid || loan.user_id;
+      const user = userMap.get(uid) || {};
+      const book = bookMap.get(loan.book_id) || {};
+      const checkedOut = loan.checked_out_at?.toDate ? fmtDate(loan.checked_out_at) : '-';
+      
+      html += `
+        <div class="recent-item">
+          <div class="item-icon">📖</div>
+          <div class="item-info">
+            <div class="item-title">${escapeHtml(book.title || loan.book_title || '不明')}</div>
+            <div class="item-meta">${escapeHtml(user.name || user.email || '-')} | ${checkedOut}</div>
+          </div>
+        </div>
+      `;
+    });
+    html += '</div>';
+    container.innerHTML = html;
+  }
+
+  async function renderOverdueList(overdueLoans){
+    const container = $('dashOverdueList');
+    if (!container) return;
+    
+    if (overdueLoans.length === 0) {
+      container.innerHTML = '<p style="color:#4caf50;">✅ 延滞はありません</p>';
+      return;
+    }
+
+    // ユーザー・書籍情報を取得
+    const userIds = new Set(overdueLoans.map(l => l.uid || l.user_id).filter(Boolean));
+    const bookIds = new Set(overdueLoans.map(l => l.book_id).filter(Boolean));
+    
+    const userMap = new Map();
+    const bookMap = new Map();
+    
+    await Promise.all([
+      Promise.all([...userIds].map(async uid => {
+        try {
+          const snap = await db.collection('users').doc(uid).get();
+          if (snap.exists) userMap.set(uid, snap.data());
+        } catch(e){}
+      })),
+      Promise.all([...bookIds].map(async bid => {
+        try {
+          const snap = await db.collection('books').doc(bid).get();
+          if (snap.exists) bookMap.set(bid, snap.data());
+        } catch(e){}
+      }))
+    ]);
+
+    let html = '<div class="recent-items">';
+    overdueLoans.forEach(loan => {
+      const uid = loan.uid || loan.user_id;
+      const user = userMap.get(uid) || {};
+      const book = bookMap.get(loan.book_id) || {};
+      const due = loan.due_at?.toDate ? fmtDate(loan.due_at) : '-';
+      const daysOverdue = loan.due_at?.toDate ? Math.floor((new Date() - loan.due_at.toDate()) / (1000*60*60*24)) : 0;
+      
+      html += `
+        <div class="recent-item overdue">
+          <div class="item-icon">⚠️</div>
+          <div class="item-info">
+            <div class="item-title">${escapeHtml(book.title || loan.book_title || '不明')}</div>
+            <div class="item-meta">${escapeHtml(user.name || user.email || '-')} | 期限: ${due} (${daysOverdue}日超過)</div>
+          </div>
+        </div>
+      `;
+    });
+    html += '</div>';
+    container.innerHTML = html;
+  }
+
+  // ===== 蔵書管理機能 =====
+  let __booksCache = [];
+
+  async function initBooksManagement(){
+    await searchBooksManagement();
+  }
+
+  async function searchBooksManagement(){
+    try {
+      showActionResult('処理中', '蔵書データを読み込み中...', 'processing');
+      
+      const term = ($('booksSearchInput')?.value || '').trim().toLowerCase();
+      const statusFilter = $('booksStatusFilter')?.value || '';
+      
+      // 🔥 全件取得を削減（1000件→200件）
+      const snap = await db.collection('books').limit(200).get();
+      __booksCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      
+      // フィルタリング
+      let filtered = __booksCache;
+      
+      if (term) {
+        filtered = filtered.filter(b => {
+          const searchText = [
+            b.title, b.authors, b.author, b.isbn13, b.isbn, 
+            b.publisher, b.call_number, b.accession_number
+          ].filter(Boolean).join(' ').toLowerCase();
+          return searchText.includes(term);
+        });
+      }
+      
+      if (statusFilter) {
+        filtered = filtered.filter(b => b.status === statusFilter);
+      }
+      
+      renderBooksTable(filtered);
+      
+      // 結果表示クリア
+      const resultSection = $('actionResultSection');
+      if (resultSection) resultSection.style.display = 'none';
+    } catch(e){
+      console.error(e);
+      showActionResult('エラー', '蔵書一覧の読み込みに失敗しました', 'error');
+    }
+  }
+
+  function renderBooksTable(books){
+    const container = $('booksTableContainer');
+    const summaryEl = $('booksSummary');
+    if (!container) return;
+    
+    if (summaryEl) summaryEl.textContent = `総件数: ${books.length}`;
+    
+    if (!books.length) {
+      container.innerHTML = '<p>該当する蔵書はありません</p>';
+      return;
+    }
+    
+    const header = `
+      <table class="preview-table">
+        <thead>
+          <tr>
+            <th>タイトル</th>
+            <th>著者</th>
+            <th>ISBN</th>
+            <th>在庫/登録数</th>
+            <th>状態</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+    `;
+    
+    const body = books.map(b => {
+      const available = Number(b.available_count ?? 0);
+      const stock = Number(b.stock_count ?? 0);
+      const status = b.status || '在架';
+      const statusClass = status === '貸出中' ? 'status-loaned' : status === '除籍' ? 'status-removed' : 'status-available';
+      
+      return `
+        <tr>
+          <td>${escapeHtml(b.title || '-')}</td>
+          <td>${escapeHtml(b.authors || b.author || '-')}</td>
+          <td><small>${escapeHtml(b.isbn13 || b.isbn || '-')}</small></td>
+          <td>${available} / ${stock}</td>
+          <td><span class="status-badge ${statusClass}">${escapeHtml(status)}</span></td>
+          <td>
+            <button class="btn btn-sm" onclick="editBook('${b.id}')">✏️ 編集</button>
+            <button class="btn btn-sm btn-danger" onclick="deleteBook('${b.id}')">🗑️ 削除</button>
+          </td>
+        </tr>
+      `;
+    }).join('');
+    
+    container.innerHTML = header + body + '</tbody></table>';
+  }
+
+  async function editBook(bookId){
+    // 簡易編集（実装例: プロンプトで在庫数変更）
+    const book = __booksCache.find(b => b.id === bookId);
+    if (!book) return;
+    
+    const newStock = prompt(`「${book.title}」の在庫数を変更します。\n現在: ${book.stock_count || 0}`, book.stock_count || 0);
+    if (newStock === null) return;
+    
+    const stock = parseInt(newStock) || 0;
+    try {
+      await db.collection('books').doc(bookId).update({
+        stock_count: stock,
+        available_count: Math.min(stock, Number(book.available_count ?? 0)),
+        updated_at: firebase.firestore.FieldValue.serverTimestamp()
+      });
+      showActionResult('更新完了', '在庫数を更新しました', 'success');
+      await searchBooksManagement();
+    } catch(e){
+      console.error(e);
+      showActionResult('更新失敗', e.message, 'error');
+    }
+  }
+
+  async function deleteBook(bookId){
+    const book = __booksCache.find(b => b.id === bookId);
+    if (!book) return;
+    
+    if (!confirm(`「${book.title}」を削除します。よろしいですか？\n※貸出中の場合は削除できません`)) return;
+    
+    try {
+      // 貸出中チェック
+      const loansSnap = await db.collection('loans')
+        .where('book_id', '==', bookId)
+        .where('status', '==', 'active')
+        .limit(1)
+        .get();
+      
+      if (!loansSnap.empty) {
+        showActionResult('削除不可', 'この本は現在貸出中のため削除できません', 'error');
+        return;
+      }
+      
+      await db.collection('books').doc(bookId).delete();
+      showActionResult('削除完了', '蔵書を削除しました', 'success');
+      await searchBooksManagement();
+    } catch(e){
+      console.error(e);
+      showActionResult('削除失敗', e.message, 'error');
+    }
+  }
+
+  function exportBooksCsv(){
+    if (!__booksCache.length) {
+      showActionResult('エクスポート対象がありません', 'error');
+      return;
+    }
+    
+    const rows = __booksCache.map(b => ({
+      タイトル: b.title || '',
+      著者: b.authors || b.author || '',
+      ISBN: b.isbn13 || b.isbn || '',
+      出版社: b.publisher || '',
+      在庫数: b.stock_count || 0,
+      利用可能数: b.available_count || 0,
+      状態: b.status || '',
+      請求記号: b.call_number || '',
+      登録番号: b.accession_number || ''
+    }));
+    
+    const csv = (window.Papa && Papa.unparse) ? Papa.unparse(rows) : 
+      rows.map(r => Object.values(r).map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+    
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `books_${new Date().toISOString().slice(0,10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  // 公開
+  window.initDashboard = initDashboard;
+  window.initBooksManagement = initBooksManagement;
+  window.searchBooksManagement = searchBooksManagement;
+  window.editBook = editBook;
+  window.deleteBook = deleteBook;
+  window.exportBooksCsv = exportBooksCsv;
+
+  // ===== ⚡ クイック登録機能（革新的） =====
+  let quickQueue = []; // { isbn, status: 'pending'|'success'|'error', message? }
+
+  function initQuickRegister(){
+    renderQuickQueue();
+  }
+
+  function startQuickScan(){
+    // 専用スキャナーページに遷移（クイックモード対応）
+    sessionStorage.setItem('quickScanMode', 'true');
+    window.location.href = 'admin-barcode-scanner.html?mode=quick';
+  }
+
+  function showQuickManual(){
+    const modal = $('quickManualModal');
+    if (modal) {
+      modal.style.display = 'flex';
+      $('quickIsbnInput').value = '';
+      $('quickIsbnInput').focus();
+    }
+  }
+
+  function closeQuickManual(){
+    const modal = $('quickManualModal');
+    if (modal) modal.style.display = 'none';
+  }
+
+  function addQuickIsbnList(){
+    const input = $('quickIsbnInput')?.value || '';
+    const lines = input.split('\n').filter(l => l.trim());
+    
+    let added = 0;
+    for (const line of lines){
+      const isbn = extractIsbn13(line.trim());
+      if (!isbn) continue;
+      
+      // 重複チェック
+      const exists = quickQueue.find(q => q.isbn === isbn);
+      if (exists) continue;
+      
+      quickQueue.push({ isbn, status: 'pending' });
+      added++;
+    }
+    
+    if (added > 0){
+      showActionResult('追加完了', `${added}件のISBNをキューに追加しました`, 'success');
+      renderQuickQueue();
+      closeQuickManual();
+    } else {
+      showActionResult('追加失敗', '有効なISBNが見つかりませんでした', 'error');
+    }
+  }
+
+  function renderQuickQueue(){
+    showElement('quickQueueSection', quickQueue.length > 0);
+    
+    const pending = quickQueue.filter(q => q.status === 'pending').length;
+    const success = quickQueue.filter(q => q.status === 'success').length;
+    const error = quickQueue.filter(q => q.status === 'error').length;
+    
+    setText('queuePending', pending);
+    setText('queueSuccess', success);
+    setText('queueError', error);
+    
+    const container = $('quickQueueList');
+    if (!container) return;
+    
+    if (quickQueue.length === 0) {
+      container.innerHTML = '<p style="color:#999;">キューが空です</p>';
+      return;
+    }
+    
+    let html = '<div class="queue-items">';
+    quickQueue.forEach((item, idx) => {
+      const statusIcon = item.status === 'success' ? '✅' : item.status === 'error' ? '❌' : '⏳';
+      const statusClass = `queue-item ${item.status}`;
+      const message = item.message ? `<small>${escapeHtml(item.message)}</small>` : '';
+      
+      html += `
+        <div class="${statusClass}">
+          <span class="queue-icon">${statusIcon}</span>
+          <span class="queue-isbn">${escapeHtml(item.isbn)}</span>
+          ${message}
+          ${item.status === 'pending' ? `<button class="btn-icon" onclick="removeFromQueue(${idx})" title="削除">🗑️</button>` : ''}
+        </div>
+      `;
+    });
+    html += '</div>';
+    
+    container.innerHTML = html;
+  }
+
+  function removeFromQueue(index){
+    quickQueue.splice(index, 1);
+    renderQuickQueue();
+  }
+
+  async function processQuickQueue(){
+    const pending = quickQueue.filter(q => q.status === 'pending');
+    if (pending.length === 0) {
+      showActionResult('完了', 'すべて処理済みです', 'info');
+      return;
+    }
+    
+    const btn = $('processQueueBtn');
+    if (btn) btn.disabled = true;
+    
+    showActionResult('処理中', `${pending.length}件を登録中...`, 'processing');
+    
+    for (const item of pending){
+      try {
+        // 軽量登録：ISBNと最小限の情報のみ
+        await registerBookLight({ isbn13: item.isbn, stock_count: 1 });
+        item.status = 'success';
+        item.message = '登録完了';
+      } catch (e){
+        item.status = 'error';
+        item.message = e.message || '登録失敗';
+      }
+      renderQuickQueue();
+      // 連続登録の負荷軽減
+      await new Promise(r => setTimeout(r, 100));
+    }
+    
+    if (btn) btn.disabled = false;
+    
+    const finalSuccess = quickQueue.filter(q => q.status === 'success').length;
+    const finalError = quickQueue.filter(q => q.status === 'error').length;
+    
+    showActionResult(
+      '一括登録完了',
+      `成功: ${finalSuccess}件 / 失敗: ${finalError}件`,
+      finalError > 0 ? 'warning' : 'success'
+    );
+  }
+
+  function clearQuickQueue(){
+    if (quickQueue.length === 0) return;
+    if (!confirm('キューをクリアしますか？')) return;
+    quickQueue = [];
+    renderQuickQueue();
+  }
+
+  // 軽量登録関数（ISBNと在庫数のみ）
+  async function registerBookLight(bookData){
+    try {
+      const user = auth.currentUser;
+      if (!user) throw new Error('ログインが必要です');
+      if (!isAdminAuthenticated) throw new Error('管理者権限が必要です');
+      
+      const isbn13 = bookData.isbn13 || extractIsbn13(bookData.isbn || '');
+      if (!isbn13) throw new Error('有効なISBNが必要です');
+      
+      // 重複チェック
+      const existingSnap = await db.collection('books')
+        .where('isbn13', '==', isbn13)
+        .limit(1)
+        .get();
+      
+      if (!existingSnap.empty) {
+        // 既存の場合は在庫数を増加
+        const existingDoc = existingSnap.docs[0];
+        const current = existingDoc.data();
+        const newStock = (current.stock_count || 0) + (bookData.stock_count || 1);
+        const newAvailable = (current.available_count || 0) + (bookData.stock_count || 1);
+        
+        await existingDoc.ref.update({
+          stock_count: newStock,
+          available_count: newAvailable,
+          updated_at: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        
+        return { id: existingDoc.id, updated: true };
+      }
+      
+      // 新規登録（軽量版：ISBNと在庫数のみ）
+      const docRef = db.collection('books').doc();
+      const now = firebase.firestore.FieldValue.serverTimestamp();
+      
+      const lightDoc = {
+        book_id: docRef.id,
+        isbn13: isbn13,
+        isbn: isbn13,
+        // メタデータは空（検索時に遅延取得）
+        title: `ISBN:${isbn13}`,
+        authors: '',
+        publisher: '',
+        published: '',
+        pages: null,
+        series: '',
+        price: null,
+        description: '',
+        categories: '',
+        thumbnail: '',
+        // 在庫情報のみ保存
+        stock_count: parseInt(bookData.stock_count) || 1,
+        available_count: parseInt(bookData.stock_count) || 1,
+        status: '在架',
+        notes: '',
+        // 検索用
+        isbn_digits: onlyDigits(isbn13),
+        search_tokens: [isbn13],
+        search_blob: isbn13,
+        // メタデータ未取得フラグ
+        metadata_loaded: false,
+        // タイムスタンプ
+        created_at: now,
+        updated_at: now,
+        created_by: user.uid
+      };
+      
+      await docRef.set(lightDoc);
+      return { id: docRef.id, data: lightDoc };
+      
+    } catch (error) {
+      console.error('Light book registration error:', error);
+      throw error;
+    }
+  }
+
+  // バーコードスキャナーからのコールバック（クイックモード対応）
+  window.addToQuickQueue = function(isbn){
+    const isbn13 = extractIsbn13(isbn);
+    if (!isbn13) return;
+    
+    const exists = quickQueue.find(q => q.isbn === isbn13);
+    if (exists) return;
+    
+    quickQueue.push({ isbn: isbn13, status: 'pending' });
+    renderQuickQueue();
+    
+    // 音声フィードバック（オプション）
+    if (window.speechSynthesis) {
+      const utterance = new SpeechSynthesisUtterance('追加');
+      utterance.rate = 2; // 高速再生
+      utterance.volume = 0.3;
+      window.speechSynthesis.speak(utterance);
+    }
+  };
+
+  // ===== 🗑️ 全データ削除機能（管理者専用） =====
+  /**
+   * 全ての本データを削除します（管理者専用）
+   * ブラウザのコンソールで実行: deleteAllBooks()
+   * 
+   * 使用方法：
+   * 1. 管理画面でF12を押してコンソールを開く
+   * 2. deleteAllBooks() と入力してEnter
+   * 3. 確認メッセージで「はい」を選択
+   */
+  async function deleteAllBooks() {
+    if (!isAdminAuthenticated) {
+      console.error('❌ 管理者権限が必要です');
+      alert('管理者権限が必要です');
+      return;
+    }
+
+    const confirmText = prompt(
+      '⚠️ 警告：全ての本データを削除します。\n' +
+      'この操作は取り消せません。\n\n' +
+      '続行するには "DELETE ALL" と入力してください:'
+    );
+
+    if (confirmText !== 'DELETE ALL') {
+      console.log('❌ 削除がキャンセルされました');
+      alert('削除がキャンセルされました');
+      return;
+    }
+
+    try {
+      console.log('🔥 全削除を開始します...');
+      showActionResult('処理中', '全ての本データを削除しています...', 'processing');
+
+      // バッチ削除（一度に500件まで）
+      let deletedCount = 0;
+      let hasMore = true;
+
+      while (hasMore) {
+        const snapshot = await db.collection('books').limit(500).get();
+        
+        if (snapshot.empty) {
+          hasMore = false;
+          break;
+        }
+
+        // バッチ処理で削除
+        const batch = db.batch();
+        snapshot.docs.forEach(doc => {
+          batch.delete(doc.ref);
+        });
+
+        await batch.commit();
+        deletedCount += snapshot.docs.length;
+        
+        console.log(`📊 削除進捗: ${deletedCount}件`);
+        showActionResult('処理中', `削除中... ${deletedCount}件完了`, 'processing');
+
+        // API制限を回避するため少し待機
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+
+      console.log(`✅ 全削除完了: ${deletedCount}件を削除しました`);
+      showActionResult('削除完了', `全ての本データ（${deletedCount}件）を削除しました`, 'success');
+      
+      // キャッシュをクリア（admin-books.js内のキャッシュのみ）
+      __booksCache = [];
+      dashboardCache = null;
+      
+      alert(`✅ 全ての本データ（${deletedCount}件）を削除しました`);
+
+    } catch (error) {
+      console.error('❌ 削除エラー:', error);
+      showActionResult('削除失敗', `エラー: ${error.message}`, 'error');
+      alert(`削除に失敗しました: ${error.message}`);
+    }
+  }
+
+  /**
+   * 貸出・予約データも含めて全削除（完全リセット）
+   * ブラウザのコンソールで実行: deleteAllData()
+   */
+  async function deleteAllData() {
+    if (!isAdminAuthenticated) {
+      console.error('❌ 管理者権限が必要です');
+      alert('管理者権限が必要です');
+      return;
+    }
+
+    const confirmText = prompt(
+      '🚨 最終警告：本・貸出・予約の全データを削除します。\n' +
+      'システムを完全にリセットします。\n' +
+      'この操作は絶対に取り消せません。\n\n' +
+      '続行するには "RESET EVERYTHING" と入力してください:'
+    );
+
+    if (confirmText !== 'RESET EVERYTHING') {
+      console.log('❌ リセットがキャンセルされました');
+      alert('リセットがキャンセルされました');
+      return;
+    }
+
+    try {
+      console.log('🔥 完全リセットを開始します...');
+      const results = { books: 0, loans: 0, reservations: 0 };
+
+      // 1. 本データ削除
+      showActionResult('処理中', '本データを削除中...', 'processing');
+      let hasMoreBooks = true;
+      while (hasMoreBooks) {
+        const snapshot = await db.collection('books').limit(500).get();
+        if (snapshot.empty) { hasMoreBooks = false; break; }
+        const batch = db.batch();
+        snapshot.docs.forEach(doc => batch.delete(doc.ref));
+        await batch.commit();
+        results.books += snapshot.docs.length;
+        console.log(`📚 本: ${results.books}件削除`);
+        await new Promise(r => setTimeout(r, 500));
+      }
+
+      // 2. 貸出データ削除
+      showActionResult('処理中', '貸出データを削除中...', 'processing');
+      let hasMoreLoans = true;
+      while (hasMoreLoans) {
+        const snapshot = await db.collection('loans').limit(500).get();
+        if (snapshot.empty) { hasMoreLoans = false; break; }
+        const batch = db.batch();
+        snapshot.docs.forEach(doc => batch.delete(doc.ref));
+        await batch.commit();
+        results.loans += snapshot.docs.length;
+        console.log(`📋 貸出: ${results.loans}件削除`);
+        await new Promise(r => setTimeout(r, 500));
+      }
+
+      // 3. 予約データ削除
+      showActionResult('処理中', '予約データを削除中...', 'processing');
+      let hasMoreReservations = true;
+      while (hasMoreReservations) {
+        const snapshot = await db.collection('reservations').limit(500).get();
+        if (snapshot.empty) { hasMoreReservations = false; break; }
+        const batch = db.batch();
+        snapshot.docs.forEach(doc => batch.delete(doc.ref));
+        await batch.commit();
+        results.reservations += snapshot.docs.length;
+        console.log(`📌 予約: ${results.reservations}件削除`);
+        await new Promise(r => setTimeout(r, 500));
+      }
+
+      const totalDeleted = results.books + results.loans + results.reservations;
+      console.log(`✅ 完全リセット完了:\n  📚 本: ${results.books}件\n  📋 貸出: ${results.loans}件\n  📌 予約: ${results.reservations}件\n  合計: ${totalDeleted}件`);
+      
+      showActionResult(
+        'リセット完了', 
+        `全データを削除しました<br>本: ${results.books}件<br>貸出: ${results.loans}件<br>予約: ${results.reservations}件`, 
+        'success'
+      );
+
+      // 全キャッシュクリア（admin-books.js内のキャッシュのみ）
+      __booksCache = [];
+      __loansCache = [];
+      dashboardCache = null;
+      
+      alert(`✅ システムをリセットしました\n合計${totalDeleted}件を削除`);
+
+    } catch (error) {
+      console.error('❌ リセットエラー:', error);
+      showActionResult('リセット失敗', `エラー: ${error.message}`, 'error');
+      alert(`リセットに失敗しました: ${error.message}`);
+    }
+  }
+
+  // コンソール用に公開
+  window.deleteAllBooks = deleteAllBooks;
+  window.deleteAllData = deleteAllData;
+
+  // 公開
+  window.initQuickRegister = initQuickRegister;
+  window.startQuickScan = startQuickScan;
+  window.showQuickManual = showQuickManual;
+  window.closeQuickManual = closeQuickManual;
+  window.addQuickIsbnList = addQuickIsbnList;
+  window.removeFromQueue = removeFromQueue;
+  window.processQuickQueue = processQuickQueue;
+  window.clearQuickQueue = clearQuickQueue;
+  window.registerBookLight = registerBookLight;
+
 })();

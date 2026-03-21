@@ -4,17 +4,24 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>図書登録 - 図書館システム</title>
-    <link rel="stylesheet" href="styles.css">
-    <!-- Firebase SDK v8 (統一) -->
+    <link rel="stylesheet" href="../styles/styles.css">
+    
+    <!-- Firebase設定を最初に読み込む -->
+    <script src="../lib/firebase-config.js"></script>
+    
+    <!-- Firebase SDK v8 -->
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
-    <!-- Firebase設定 -->
-    <script src="firebase-config.js"></script>
-    <script src="firebase-init.js"></script>
+    
+    <!-- Firebase初期化 -->
+    <script src="../lib/firebase-init.js"></script>
+    
+    <!-- 🔥 Firebase制限モード（開発用コスト削減） -->
+    <script src="../lib/firebase-limiter.js"></script>
+    
     <!-- Excel/CSV処理用ライブラリ -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <!-- 追加: CSV 解析ライブラリ（PapaParse） -->
     <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
 </head>
 <body>
@@ -25,15 +32,15 @@
         <h1>📚 Library System</h1>
       </div>
       <nav class="nav-menu">
-        <a href="index.html" class="nav-link">
+        <a href="../user/index.html" class="nav-link">
           <span class="nav-icon">🔍</span>
           <span class="nav-text">検索</span>
         </a>
-        <a href="circulation.html" class="nav-link">
+        <a href="../user/circulation.html" class="nav-link">
           <span class="nav-icon">📱</span>
           <span class="nav-text">貸出・返却</span>
         </a>
-        <a href="mypage.html" class="nav-link">
+        <a href="../user/mypage.html" class="nav-link">
           <span class="nav-icon">👤</span>
           <span class="nav-text">マイページ</span>
         </a>
@@ -50,15 +57,15 @@
 
   <!-- モバイル用ボトムナビ -->
   <nav class="bottom-nav">
-    <a href="index.html" class="bottom-nav-item">
+    <a href="../user/index.html" class="bottom-nav-item">
       <span class="bottom-nav-icon">🔍</span>
       <span class="bottom-nav-text">検索</span>
     </a>
-    <a href="circulation.html" class="bottom-nav-item">
+    <a href="../user/circulation.html" class="bottom-nav-item">
       <span class="bottom-nav-icon">📱</span>
       <span class="bottom-nav-text">貸出・返却</span>
     </a>
-    <a href="mypage.html" class="bottom-nav-item">
+    <a href="../user/mypage.html" class="bottom-nav-item">
       <span class="bottom-nav-icon">👤</span>
       <span class="bottom-nav-text">マイページ</span>
     </a>
@@ -86,16 +93,206 @@
         <!-- 図書登録メイン -->
         <main id="mainContent" style="display: none;">
             <nav class="tab-nav">
-                <button class="tab-btn active" onclick="showTab('scan')">📱 スキャン登録</button>
+                <button class="tab-btn active" onclick="showTab('dashboard'); initDashboard()">📊 ダッシュボード</button>
+                <button class="tab-btn" onclick="showTab('quick'); initQuickRegister()">⚡ クイック登録</button>
+                <button class="tab-btn" onclick="showTab('books'); initBooksManagement()">📚 蔵書管理</button>
+                <button class="tab-btn" onclick="showTab('loans'); initLoansDashboard()">📖 貸出状況</button>
+                <button class="tab-btn" onclick="showTab('users'); showUserManagement()">👥 ユーザー管理</button>
+                <button class="tab-btn" onclick="showTab('scan')">📱 スキャン登録</button>
                 <button class="tab-btn" onclick="showTab('manual')">✏️ 手動登録</button>
                 <button class="tab-btn" onclick="showTab('batch')">📋 一括登録</button>
                 <button class="tab-btn" onclick="showTab('import')">📂 インポート</button>
                 <button class="tab-btn" onclick="showTab('admin')">🔧 管理者設定</button>
-                <button class="tab-btn" onclick="showTab('loans'); initLoansDashboard()">📊 貸出状況</button>
             </nav>
 
+            <!-- ダッシュボードタブ（新規） -->
+            <div id="dashboardTab" class="tab-content active">
+                <h2>📊 管理ダッシュボード</h2>
+                <div class="dashboard-grid">
+                    <div class="dashboard-card">
+                        <div class="card-icon">📚</div>
+                        <div class="card-content">
+                            <h3>総蔵書数</h3>
+                            <div class="card-value" id="dashTotalBooks">-</div>
+                        </div>
+                    </div>
+                    <div class="dashboard-card">
+                        <div class="card-icon">📖</div>
+                        <div class="card-content">
+                            <h3>貸出中</h3>
+                            <div class="card-value" id="dashActiveLoans">-</div>
+                        </div>
+                    </div>
+                    <div class="dashboard-card warning">
+                        <div class="card-icon">⚠️</div>
+                        <div class="card-content">
+                            <h3>延滞</h3>
+                            <div class="card-value" id="dashOverdue">-</div>
+                        </div>
+                    </div>
+                    <div class="dashboard-card">
+                        <div class="card-icon">👥</div>
+                        <div class="card-content">
+                            <h3>利用者数</h3>
+                            <div class="card-value" id="dashTotalUsers">-</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="dashboard-section">
+                    <h3>最近の貸出（直近10件）</h3>
+                    <div id="dashRecentLoans" class="recent-list"></div>
+                </div>
+                <div class="dashboard-section">
+                    <h3>延滞中の書籍</h3>
+                    <div id="dashOverdueList" class="recent-list"></div>
+                </div>
+                
+                <!-- 🔥 詳細分析ボタン（遅延読み込み） -->
+                <div class="dashboard-section" style="text-align: center; margin-top: 2rem;">
+                    <button class="btn btn-primary" onclick="loadDetailedAnalytics(event)" style="padding: 1rem 2rem; font-size: 1rem;">
+                        📊 詳細分析を読み込む
+                    </button>
+                    <p style="color: #666; font-size: 0.875rem; margin-top: 0.5rem;">
+                        読書率分析、人気書籍ランキング、月別統計などを表示します
+                    </p>
+                </div>
+            </div>
+
+            <!-- ⚡ クイック登録タブ（新規・革新的） -->
+            <div id="quickTab" class="tab-content">
+                <h2>⚡ クイック登録（爆速モード）</h2>
+                <div class="quick-register-info">
+                    <div class="info-card">
+                        <h3>🚀 このモードの特徴</h3>
+                        <ul>
+                            <li>✅ ISBNだけを即座に登録（メタデータは後回し）</li>
+                            <li>✅ 100冊でも数分で完了</li>
+                            <li>✅ サーバーコスト90%削減</li>
+                            <li>✅ 書籍情報は検索・表示時に自動取得</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="quick-register-modes">
+                    <div class="mode-card" onclick="startQuickScan()">
+                        <div class="mode-icon">📱</div>
+                        <h3>バーコード連続スキャン</h3>
+                        <p>カメラでISBNを次々にスキャン</p>
+                        <button class="btn btn-primary">開始</button>
+                    </div>
+                    
+                    <div class="mode-card" onclick="showQuickManual()">
+                        <div class="mode-icon">⌨️</div>
+                        <h3>ISBN一括入力</h3>
+                        <p>ISBNリストをコピペで即登録</p>
+                        <button class="btn btn-primary">開始</button>
+                    </div>
+                </div>
+
+                <!-- スキャナーセクション（管理者専用） -->
+                <div id="adminScannerSection" style="display: none;">
+                    <h3>📱 バーコードスキャナー</h3>
+                    <div class="scanner-container">
+                        <div id="adminScannerContainer" style="max-width: 640px; margin: 0 auto; position: relative; min-height: 300px; background: #000; border-radius: 8px; overflow: hidden;"></div>
+                    </div>
+                    <div class="camera-controls" style="margin-top: 16px; text-align: center;">
+                        <button id="adminStartBtn" onclick="startAdminScanner()" class="btn btn-primary">📷 カメラ起動</button>
+                        <button id="adminStopBtn" onclick="stopAdminScanner()" class="btn btn-secondary" style="display: none;">⏹️ カメラ停止</button>
+                        <select id="adminCameraSelect" class="btn" style="margin-left: 8px;" onchange="switchAdminCamera()">
+                            <option value="">カメラ選択</option>
+                        </select>
+                    </div>
+                    <div style="margin-top: 16px; text-align: center;">
+                        <div id="adminScanStatus" style="font-size: 1.1em; color: #666; margin-bottom: 8px;">📷 カメラを起動してください</div>
+                        <div id="adminScanResult" style="font-size: 1.2em; font-weight: bold; color: #2196F3; margin-bottom: 8px;"></div>
+                        <div id="adminScanStats" style="font-size: 0.9em; color: #999;"></div>
+                    </div>
+                </div>
+
+                <!-- スキャンキュー表示 -->
+                <div id="quickQueueSection" style="display: none;">
+                    <h3>📋 スキャンキュー</h3>
+                    <div class="queue-stats">
+                        <span class="stat-badge">待機: <strong id="queuePending">0</strong></span>
+                        <span class="stat-badge success">登録済: <strong id="queueSuccess">0</strong></span>
+                        <span class="stat-badge error">エラー: <strong id="queueError">0</strong></span>
+                    </div>
+                    <div id="quickQueueList" class="queue-list"></div>
+                    <div class="form-actions">
+                        <button onclick="processQuickQueue()" class="btn btn-success" id="processQueueBtn">一括登録実行</button>
+                        <button onclick="clearQuickQueue()" class="btn btn-secondary">クリア</button>
+                    </div>
+                </div>
+
+                <!-- 手動入力モーダル -->
+                <div id="quickManualModal" class="modal" style="display: none;">
+                    <div class="modal-content">
+                        <button class="modal-close" onclick="closeQuickManual()">×</button>
+                        <h3>ISBN一括入力</h3>
+                        <textarea id="quickIsbnInput" rows="10" placeholder="ISBNを1行に1つずつ入力&#10;9784101010137&#10;9784087474039&#10;9784062648035"></textarea>
+                        <div class="form-actions">
+                            <button onclick="addQuickIsbnList()" class="btn btn-success">キューに追加</button>
+                            <button onclick="closeQuickManual()" class="btn btn-secondary">キャンセル</button>
+                        </div>
+                    </div>
+                    <div class="modal-backdrop" onclick="closeQuickManual()"></div>
+                </div>
+            </div>
+
+            <!-- 蔵書管理タブ（新規） -->
+            <div id="booksTab" class="tab-content">
+                <h2>📚 蔵書管理</h2>
+                <div class="management-toolbar">
+                    <div class="search-group">
+                        <input id="booksSearchInput" type="text" placeholder="ISBN、タイトル、著者で検索..." oninput="searchBooksManagement()">
+                        <button class="btn btn-primary" onclick="searchBooksManagement()">🔍 検索</button>
+                    </div>
+                    <div class="filter-group">
+                        <select id="booksStatusFilter" onchange="searchBooksManagement()">
+                            <option value="">すべて</option>
+                            <option value="在架">在架</option>
+                            <option value="貸出中">貸出中</option>
+                            <option value="除籍">除籍</option>
+                        </select>
+                        <button class="btn btn-secondary" onclick="exportBooksCsv()">📥 CSVエクスポート</button>
+                    </div>
+                </div>
+                <div id="booksSummary" class="summary"></div>
+                <div id="booksTableContainer" class="table-responsive"></div>
+            </div>
+
+            <!-- 貸出状況タブ（改善版） -->
+            <div id="loansTab" class="tab-content">
+              <h2>📖 貸出状況</h2>
+              <div class="management-toolbar">
+                <div class="search-group">
+                  <input id="loanSearchTerm" type="text" placeholder="氏名/ID/書名/ISBN を検索" oninput="refreshLoans()">
+                  <button class="btn btn-primary" onclick="refreshLoans()">🔍 検索</button>
+                </div>
+                <div class="filter-group">
+                  <select id="loanStatusFilter" onchange="refreshLoans()" title="貸出状態フィルタ">
+                    <option value="active" selected>📖 貸出中</option>
+                    <option value="returned">✅ 返却済み</option>
+                    <option value="all">📋 すべて</option>
+                  </select>
+                  <label class="checkbox-label">
+                    <input id="loanOverdueOnly" type="checkbox" onchange="refreshLoans()">
+                    ⚠️ 延滞のみ
+                  </label>
+                  <button class="btn btn-secondary" onclick="exportLoansCsv()">📥 CSVエクスポート</button>
+                </div>
+              </div>
+              <div id="loansSummary" class="summary"></div>
+              <div id="loansTableContainer" class="table-responsive"></div>
+            </div>
+
+            <!-- ユーザー管理タブ（新規） -->
+            <div id="usersTab" class="tab-content">
+              <div id="userManagementContainer"></div>
+            </div>
+
             <!-- スキャン登録タブ -->
-            <div id="scanTab" class="tab-content active">
+            <div id="scanTab" class="tab-content">
                 <h2>📱 ISBNスキャン登録</h2>
                 
                 <!-- カメラ部分 -->
@@ -368,9 +565,41 @@
     </div>
 
     <!-- 設定とスクリプトを正しい順序で読み込み -->
-    <script src="firebase-config.js"></script>
-    <script src="firebase-init.js"></script>
-    <script src="guard.js"></script>
-    <script src="admin-books.js"></script>
+    <script src="../lib/guard.js"></script>
+    <script src="../lib/users.js"></script>
+    
+    <!-- 🔥 分割された管理画面スクリプト（最適化版） -->
+    <script src="admin-core.js"></script>
+    <script src="admin-auth.js"></script>
+    <script src="admin-dashboard.js"></script>
+    <script src="admin-analytics.js"></script>
+    <script src="admin-users.js"></script>
+    <script src="admin-csv.js"></script>
+    <script src="admin-books-manage.js"></script>
+    <script src="admin-loans.js"></script>
+    <script src="admin-quick-register.js"></script>
+    <script src="admin-scanner.js"></script>
+    
+    <!-- 初期化スクリプト -->
+    <script>
+        document.addEventListener('DOMContentLoaded', async () => {
+            try {
+                await window.waitForFirebase();
+                console.log('✅ Firebase初期化完了');
+                
+                window.adminState.auth.onAuthStateChanged(async (user) => {
+                    if (user) {
+                        window.setText('userInfo', `ログイン中: ${user.email}`);
+                        await window.verifyAdmin();
+                    } else {
+                        window.location.href = '../auth/login.html';
+                    }
+                });
+            } catch (error) {
+                console.error('❌ 初期化エラー:', error);
+                window.showMessage('adminAuthMsg', 'システム初期化失敗', 'error');
+            }
+        });
+    </script>
 </body>
 </html>

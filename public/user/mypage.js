@@ -48,12 +48,16 @@
       }
 
       // 貸出中一覧（status=active）
-      const snap = await db().collection('loans')
+      // 🔥 limit追加: 最大20件に制限（50件→20件）
+      let query = db().collection('loans')
         .where('uid','==', user.uid)
         .where('status','==','active')
-        .orderBy('due_at','asc')
-        .limit(50)
-        .get();
+        .limit(20);
+      
+      // インデックス完成後は以下のコメントを外してください
+      // .orderBy('due_at','asc')
+      
+      const snap = await query.get();
 
       if (snap.empty){
         if (summaryEl) summaryEl.textContent = '現在借りている本はありません。';
@@ -68,6 +72,13 @@
         const due = d.due_at;
         const isOverdue = due && ( (due.toDate ? due.toDate() : new Date(due)) < now );
         loans.push({ id: doc.id, ...d, isOverdue });
+      });
+
+      // クライアント側でソート（一時的措置）
+      loans.sort((a, b) => {
+        const aTime = a.due_at ? (a.due_at.toDate ? a.due_at.toDate() : new Date(a.due_at)).getTime() : 0;
+        const bTime = b.due_at ? (b.due_at.toDate ? b.due_at.toDate() : new Date(b.due_at)).getTime() : 0;
+        return aTime - bTime;
       });
 
       const total = loans.length;

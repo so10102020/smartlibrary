@@ -61,10 +61,25 @@
       }, { merge: true });
 
       setMsg('アカウントを作成しました。リダイレクトします...');
-      setTimeout(()=> location.href = 'index.html', 600);
+      setTimeout(()=> location.href = '/', 600);
     } catch (e) {
       console.error(e);
-      setMsg(e.message || '作成に失敗しました。', true);
+      // エラーコードに応じて日本語メッセージに変換
+      let errorMsg = 'アカウント作成に失敗しました。';
+      if (e.code === 'auth/invalid-email') {
+        errorMsg = 'メールアドレスの形式が正しくありません。正しいメールアドレスを入力してください。';
+      } else if (e.code === 'auth/email-already-in-use') {
+        errorMsg = 'このメールアドレスは既に登録されています。ログインページからログインしてください。';
+      } else if (e.code === 'auth/weak-password') {
+        errorMsg = 'パスワードが弱すぎます。6文字以上の強力なパスワードを設定してください。';
+      } else if (e.code === 'auth/operation-not-allowed') {
+        errorMsg = 'メール/パスワード認証が有効化されていません。管理者にお問い合わせください。';
+      } else if (e.code === 'auth/network-request-failed') {
+        errorMsg = 'ネットワークエラーが発生しました。インターネット接続を確認してください。';
+      } else if (e.message) {
+        errorMsg = e.message;
+      }
+      setMsg(errorMsg, true);
     }
   }
 

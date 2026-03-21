@@ -11,6 +11,24 @@
       "firebase.json",
       "**/.*",
       "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "/",
+        "destination": "/user/index.html"
+      },
+      {
+        "source": "/login",
+        "destination": "/auth/login.html"
+      },
+      {
+        "source": "/signup",
+        "destination": "/auth/signup.html"
+      },
+      {
+        "source": "/admin",
+        "destination": "/admin/admin.html"
+      }
     ]
   }
 }

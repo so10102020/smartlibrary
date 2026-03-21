@@ -33,10 +33,16 @@
 
   // ユーザー情報の取得と表示
   async function loadUserInfo() {
+    const userInfoEl = getEl('userInfo');
+    if (!userInfoEl) {
+      console.error('userInfo要素が見つかりません');
+      return;
+    }
+
     try {
       const user = auth().currentUser;
       if (!user) {
-        getEl('userInfo').innerHTML = '<span style="color: #c62828;">ログインが必要です</span>';
+        userInfoEl.innerHTML = '<span style="color: #c62828;">ログインが必要です</span>';
         return;
       }
 
@@ -44,14 +50,16 @@
       const userData = userDoc.data() || {};
       currentUser = { uid: user.uid, ...userData };
 
-      getEl('userInfo').innerHTML = `
+      userInfoEl.innerHTML = `
         <p><strong>ユーザー:</strong> ${escapeHtml(userData.name || user.displayName || 'Unknown')}</p>
         <p><strong>ID:</strong> ${escapeHtml(userData.user_id || user.uid)}</p>
         <p><strong>権限:</strong> ${escapeHtml(userData.role || 'student')}</p>
       `;
     } catch (error) {
       console.error('ユーザー情報取得エラー:', error);
-      getEl('userInfo').innerHTML = '<span style="color: #c62828;">ユーザー情報の取得に失敗しました</span>';
+      if (userInfoEl) {
+        userInfoEl.innerHTML = '<span style="color: #c62828;">オフラインモードです。接続を確認してください。</span>';
+      }
     }
   }
 

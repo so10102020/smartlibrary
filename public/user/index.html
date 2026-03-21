@@ -4,19 +4,22 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <title>図書館蔵書検索 | LibraryCirculationSystem</title>
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="../styles/styles.css">
 
-    <!-- Firebase SDKs (必要最小限) -->
-    <script defer src="/__/firebase/12.4.0/firebase-app-compat.js"></script>
-    <script defer src="/__/firebase/12.4.0/firebase-firestore-compat.js"></script>
-    <script defer src="/__/firebase/12.4.0/firebase-auth-compat.js"></script>
-    <script defer src="/__/firebase/init.js?useEmulator=true"></script>
-    <script defer src="firebase-config.js"></script>
-    <script defer src="firebase-init.js"></script>
+    <!-- Firebase設定を先に読み込む -->
+    <script src="../lib/firebase-config.js"></script>
+    
+    <!-- Firebase SDKs（同期読み込み） -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+    
+    <!-- Firebase初期化 -->
+    <script src="../lib/firebase-init.js"></script>
 
     <!-- アプリ用スクリプト -->
-    <script defer src="opac.js"></script>
-    <script defer src="guard.js"></script>
+    <script defer src="../lib/opac.js"></script>
+    <script defer src="../lib/guard.js"></script>
   </head>
   <body>
     <!-- デスクトップ用ヘッダーナビ -->
@@ -26,19 +29,19 @@
           <h1>📚 Library System</h1>
         </div>
         <nav class="nav-menu">
-          <a href="index.html" class="nav-link active">
+          <a href="/" class="nav-link active">
             <span class="nav-icon">🔍</span>
             <span class="nav-text">検索</span>
           </a>
-          <a href="circulation.html" class="nav-link">
+          <a href="/user/circulation.html" class="nav-link">
             <span class="nav-icon">📱</span>
             <span class="nav-text">貸出・返却</span>
           </a>
-          <a href="mypage.html" class="nav-link">
+          <a href="/user/mypage.html" class="nav-link">
             <span class="nav-icon">👤</span>
             <span class="nav-text">マイページ</span>
           </a>
-          <a href="admin.html" class="nav-link">
+          <a href="/admin" class="nav-link">
             <span class="nav-icon">⚙️</span>
             <span class="nav-text">管理</span>
           </a>
@@ -51,19 +54,19 @@
 
     <!-- モバイル用ボトムナビ -->
     <nav class="bottom-nav">
-      <a href="index.html" class="bottom-nav-item active">
+      <a href="/" class="bottom-nav-item active">
         <span class="bottom-nav-icon">🔍</span>
         <span class="bottom-nav-text">検索</span>
       </a>
-      <a href="circulation.html" class="bottom-nav-item">
+      <a href="/user/circulation.html" class="bottom-nav-item">
         <span class="bottom-nav-icon">📱</span>
         <span class="bottom-nav-text">貸出・返却</span>
       </a>
-      <a href="mypage.html" class="bottom-nav-item">
+      <a href="/user/mypage.html" class="bottom-nav-item">
         <span class="bottom-nav-icon">👤</span>
         <span class="bottom-nav-text">マイページ</span>
       </a>
-      <a href="admin.html" class="bottom-nav-item">
+      <a href="/admin" class="bottom-nav-item">
         <span class="bottom-nav-icon">⚙️</span>
         <span class="bottom-nav-text">管理</span>
       </a>
@@ -92,7 +95,7 @@
                 class="search-input-enhanced"
               >
             </div>
-            <button onclick="searchBooks()" class="search-btn-enhanced" aria-label="検索実行">
+            <button type="button" onclick="searchBooks(event)" class="search-btn-enhanced" aria-label="検索実行">
               検索
             </button>
           </div>

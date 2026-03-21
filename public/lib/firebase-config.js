@@ -7,8 +7,10 @@ window.FIREBASE_WEB_CONFIG = window.FIREBASE_WEB_CONFIG || {
   apiKey: "AIzaSyCpZcNXJMyXU5kfZhhTJnc7iaOsrWI9lO8",
   authDomain: "librarycirculationsystem.firebaseapp.com",
   projectId: "librarycirculationsystem",
+  storageBucket: "librarycirculationsystem.firebasestorage.app",
+  messagingSenderId: "120373031563",
   appId: "1:120373031563:web:6b00a20a46f612ebf0da8e"
-  // measurementId, storageBucket など任意の追加も可
+  // measurementId など任意の追加も可
 };
 
 (function(){

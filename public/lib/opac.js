@@ -149,17 +149,25 @@
     }
   }
 
+  // 🔥 キャッシュ導入: 読み込み削減
+  let booksCache = null;
+  let cacheTimestamp = null;
+  const CACHE_DURATION = 10 * 60 * 1000; // 🔥 10分間キャッシュ有効（5分→10分に延長）
+
   // 参照は DOM 解析後に取得
   document.addEventListener('DOMContentLoaded', () => {
     const resultsContainer = document.getElementById('resultsContainer');
     const searchInput = document.getElementById('searchInput');
+    const searchBtn = document.querySelector('.search-btn-enhanced');
 
     function getTerm() {
-      return (searchInput.value || '').trim();
+      return (searchInput?.value || '').trim();
     }
 
     function renderMessage(message) {
-      resultsContainer.innerHTML = `<p>${escapeHtml(message)}</p>`;
+      if (resultsContainer) {
+        resultsContainer.innerHTML = `<div class="no-results-message"><p>${escapeHtml(message)}</p></div>`;
+      }
     }
 
     function renderResults(items) {
@@ -170,7 +178,7 @@
 
       const html = items.map((item) => {
         const book = item.data;
-        const bookId = book.book_id || item.id; // 優先: 蔵書IDフィールド
+        const bookId = book.book_id || item.id;
         const available = Number(book.available_copies ?? book.available_count ?? 0);
         const total = Number(book.total_copies ?? book.stock_count ?? 0);
         const stockClass = available > 0 ? 'stock--ok' : 'stock--out';
@@ -183,7 +191,7 @@
             <p class="result-meta"><strong>棚の位置:</strong> ${escapeHtml(book.location || book.current_location || '-')}</p>
             <p class="stock ${stockClass}"><strong>在庫:</strong> <strong>${available} / ${total}</strong></p>
             <div class="result-actions">
-              <button class="reserve-chip" onclick="event.stopPropagation(); reserveFromCard('${escapeHtml(bookId)}')">予約</button>
+              <button type="button" class="reserve-chip" onclick="event.stopPropagation(); reserveFromCard('${escapeHtml(bookId)}')">予約</button>
             </div>
           </div>
         `;
@@ -192,7 +200,13 @@
       resultsContainer.innerHTML = html;
     }
 
-    async function searchBooksImpl() {
+    async function searchBooksImpl(event) {
+      // デフォルト動作を防ぐ
+      if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+
       const termRaw = getTerm();
       const term = termRaw.trim();
       if (!term) {
@@ -200,51 +214,96 @@
         return;
       }
 
-      resultsContainer.innerHTML = '検索中...';
+      resultsContainer.innerHTML = '<div class="loading-indicator" style="display:block;"><div class="spinner"></div><p>検索中...</p></div>';
 
       try {
-        const snapshot = await firebase.firestore().collection('books').get();
-        const termVariantsByWord = expandTerms(term);
+        // Firebaseが初期化されているか確認（待機処理を追加）
+        let attempts = 0;
+        while ((!window.firebase || !window.firebase.firestore) && attempts < 50) {
+          await new Promise(r => setTimeout(r, 100));
+          attempts++;
+        }
 
-        const results = [];
+        if (typeof firebase === 'undefined' || !firebase.firestore) {
+          throw new Error('Firebaseが初期化されていません。ページを再読み込みしてください。');
+        }
+
+        // 🔥 キャッシュチェック
+        const now = Date.now();
+        if (booksCache && cacheTimestamp && (now - cacheTimestamp < CACHE_DURATION)) {
+          console.log('📦 キャッシュから検索（読み込み0回）');
+          const termVariantsByWord = expandTerms(term);
+          performClientSideSearch(booksCache, termVariantsByWord);
+          return;
+        }
+
+        // 🔥 limit付きクエリ（200件→100件に削減）
+        console.log('🔥 Firebaseから読み込み中...');
+        const snapshot = await firebase.firestore().collection('books')
+          .limit(100)
+          .get();
+
+        console.log('✅ クエリ完了、ドキュメント数:', snapshot.size);
+
+        // キャッシュ更新
+        booksCache = [];
         snapshot.forEach((doc) => {
-          const data = doc.data() || {};
-
-          // 検索対象フィールドを広げる
-          const searchable = [
-            data.title,
-            data.authors || data.author,
-            data.publisher,
-            data.series,
-            data.categories || data.category,
-            data.description,
-            data.call_number,
-            data.accession_number,
-            data.isbn13 || data.isbn
-          ].filter(Boolean).join(' ');
-
-          const searchableNorm = normalizeForSearch(searchable);
-          const isbnDigits = onlyDigits(data.isbn13 || data.isbn || '');
-
-          // AND: すべての語について少なくとも1つのバリアントがマッチ
-          const ok = termVariantsByWord.every(variants => {
-            return variants.some(v => {
-              // ISBN数字一致
-              if (/^[0-9x]+$/i.test(v) && v.length >= 9) {
-                return isbnDigits.includes(v);
-              }
-              return searchableNorm.includes(v);
-            });
-          });
-
-          if (ok) results.push({ id: doc.id, data });
+          booksCache.push({ id: doc.id, data: doc.data() || {} });
         });
+        cacheTimestamp = now;
+        console.log(`📚 Firebaseから${booksCache.length}件取得（キャッシュ10分間有効）`);
 
-        renderResults(results);
+        console.log('🔍 検索語を展開中...', term);
+        const termVariantsByWord = expandTerms(term);
+        console.log('📋 展開結果:', termVariantsByWord);
+        
+        console.log('🔎 検索実行中...');
+        performClientSideSearch(booksCache, termVariantsByWord);
+        console.log('✅ 検索完了');
       } catch (err) {
         console.error('データ取得エラー: ', err);
-        renderMessage('データの取得中にエラーが発生しました。');
+        renderMessage(`データの取得中にエラーが発生しました: ${err.message || '不明なエラー'}`);
       }
+    }
+
+    // クライアント側フィルタリング（Firebaseの読み込み削減）
+    function performClientSideSearch(books, termVariantsByWord) {
+      const results = [];
+      
+      books.forEach((item) => {
+        const data = item.data;
+
+        // 検索対象フィールドを広げる
+        const searchable = [
+          data.title,
+          data.authors || data.author,
+          data.publisher,
+          data.series,
+          data.categories || data.category,
+          data.description,
+          data.call_number,
+          data.accession_number,
+          data.isbn13 || data.isbn
+        ].filter(Boolean).join(' ');
+
+        const searchableNorm = normalizeForSearch(searchable);
+        const isbnDigits = onlyDigits(data.isbn13 || data.isbn || '');
+
+        // AND: すべての語について少なくとも1つのバリアントがマッチ
+        const ok = termVariantsByWord.every(variants => {
+          return variants.some(v => {
+            // ISBN数字一致
+            if (/^[0-9x]+$/i.test(v) && v.length >= 9) {
+              return isbnDigits.includes(v);
+            }
+            return searchableNorm.includes(v);
+          });
+        });
+
+        if (ok) results.push(item);
+      });
+
+      renderResults(results);
     }
 
     // 予約ボタン（カード）
@@ -263,15 +322,32 @@
     window.closeBookDetail = closeBookDetail;
     window.confirmReserveFromDetail = confirmReserveFromDetail;
 
-    // Enterキーで検索実行
-    searchInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
+    // 検索ボタンのイベントリスナー
+    if (searchBtn) {
+      searchBtn.addEventListener('click', (e) => {
         e.preventDefault();
-        searchBooksImpl();
-      }
-    });
+        e.stopPropagation();
+        searchBooksImpl(e);
+      });
+    }
+
+    // Enterキーで検索実行
+    if (searchInput) {
+      searchInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          searchBooksImpl(e);
+        }
+      });
+    }
 
     // グローバル公開（HTML の onclick 用）
-    window.searchBooks = searchBooksImpl;
+    window.searchBooks = (event) => {
+      if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+      searchBooksImpl(event);
+    };
   });
 })();

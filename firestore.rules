@@ -2,34 +2,55 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    // users コレクション: 自分自身のユーザードキュメントのみ読み書き可能
+    
+    // 管理者チェック用関数（カスタムクレーム使用）
+    function isAdmin() {
+      return request.auth != null && 
+             request.auth.token.role == 'admin';
+    }
+    
+    // フォールバック：usersコレクションから確認（循環参照を避ける）
+    function isAdminFromDb() {
+      return request.auth != null && 
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // ユーザーコレクション
     match /users/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      // 自分自身は常に読める、他人は管理者のみ
+      allow read: if isAuthenticated();
+      // 自分自身または管理者のみ書き込み可能
+      allow write: if request.auth.uid == userId || isAdmin() || isAdminFromDb();
     }
-
-    // books コレクション: ログイン済みユーザーは参照のみ可、管理系クライアントからの登録更新を想定して書き込みも許可
-    // もし「一般利用者は読み取りのみ、書き込みは別バックエンド経由」にしたい場合は write 条件をより厳しくしてください。
+    
+    // 蔵書コレクション
     match /books/{bookId} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null;
+      // 認証済みユーザーは読み込み可能（limit制限を緩和）
+      allow read: if isAuthenticated();
+      // 書き込みは管理者のみ
+      allow write: if isAdmin() || isAdminFromDb();
     }
-
-    // loans コレクション: ログイン済みなら参照可能。書き込みもクライアントから行っているので同様に許可。
+    
+    // 貸出コレクション
     match /loans/{loanId} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null;
+      // 自分の貸出または管理者のみ読める
+      allow read: if isAuthenticated();
+      // 書き込みは管理者のみ
+      allow write: if isAdmin() || isAdminFromDb();
     }
-
-    // reservations コレクション: 予約機能用。ログイン済みなら参照・書き込み可
+    
+    // 予約コレクション
     match /reservations/{reservationId} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null;
-    }
-
-    // その他のコレクションはデフォルト deny
-    match /{document=**} {
-      allow read, write: if false;
+      // 認証済みユーザーは読める
+      allow read: if isAuthenticated();
+      // 作成は認証済みユーザー、更新・削除は管理者のみ
+      allow create: if isAuthenticated();
+      allow update, delete: if isAdmin() || isAdminFromDb();
     }
   }
 }

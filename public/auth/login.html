@@ -4,17 +4,21 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <title>ログイン | LibraryCirculationSystem</title>
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="../styles/styles.css">
 
-    <!-- Firebase SDKs -->
-    <script defer src="/__/firebase/12.4.0/firebase-app-compat.js"></script>
-    <script defer src="/__/firebase/12.4.0/firebase-auth-compat.js"></script>
-    <script defer src="/__/firebase/12.4.0/firebase-firestore-compat.js"></script>
-    <script defer src="/__/firebase/init.js?useEmulator=true"></script>
-    <script defer src="firebase-config.js"></script>
-    <script defer src="firebase-init.js"></script>
+    <!-- Firebase設定を先に読み込む -->
+    <script src="../lib/firebase-config.js"></script>
+    
+    <!-- Firebase SDKs（deferを削除して同期読み込み） -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+    
+    <!-- Firebase初期化 -->
+    <script src="../lib/firebase-init.js"></script>
 
-    <script defer src="login.js"></script>
+    <!-- ログインスクリプト（絶対パスで指定） -->
+    <script defer src="/auth/login.js"></script>
   </head>
   <body>
     <div class="auth-wrapper">
@@ -54,6 +58,18 @@
                   required
                 >
               </div>
+            </div>
+
+            <!-- ログイン状態を保持するチェックボックス -->
+            <div class="form-group">
+              <label class="checkbox-label">
+                <input 
+                  id="rememberMe" 
+                  type="checkbox" 
+                  checked
+                >
+                <span>ログイン状態を保持する</span>
+              </label>
             </div>
 
             <div class="form-actions">
