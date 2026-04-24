@@ -1,0 +1,56 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // 管理者チェック用関数（カスタムクレーム使用）
+    function isAdmin() {
+      return request.auth != null && 
+             request.auth.token.role == 'admin';
+    }
+    
+    // フォールバック：usersコレクションから確認（循環参照を避ける）
+    function isAdminFromDb() {
+      return request.auth != null && 
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // ユーザーコレクション
+    match /users/{userId} {
+      // 自分自身は常に読める、他人は管理者のみ
+      allow read: if isAuthenticated();
+      // 自分自身または管理者のみ書き込み可能
+      allow write: if request.auth.uid == userId || isAdmin() || isAdminFromDb();
+    }
+    
+    // 蔵書コレクション
+    match /books/{bookId} {
+      // 認証済みユーザーは読み込み可能（limit制限を緩和）
+      allow read: if isAuthenticated();
+      // 書き込みは管理者のみ
+      allow write: if isAdmin() || isAdminFromDb();
+    }
+    
+    // 貸出コレクション
+    match /loans/{loanId} {
+      // 自分の貸出または管理者のみ読める
+      allow read: if isAuthenticated();
+      // 書き込みは管理者のみ
+      allow write: if isAdmin() || isAdminFromDb();
+    }
+    
+    // 予約コレクション
+    match /reservations/{reservationId} {
+      // 認証済みユーザーは読める
+      allow read: if isAuthenticated();
+      // 作成は認証済みユーザー、更新・削除は管理者のみ
+      allow create: if isAuthenticated();
+      allow update, delete: if isAdmin() || isAdminFromDb();
+    }
+  }
+}

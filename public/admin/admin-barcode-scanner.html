@@ -1,0 +1,873 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>管理者バーコードスキャナー - 図書館システム</title>
+    <link rel="stylesheet" href="../styles/styles.css">
+    <style>
+        /* スキャナーページ専用スタイル */
+        body {
+            margin: 0;
+            padding: 0;
+            background: var(--bg);
+        }
+        
+        .scanner-page {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            background: var(--bg);
+        }
+        
+        /* ヘッダー - 統一スタイル */
+        .scanner-header {
+            background: linear-gradient(135deg, var(--primary) 0%, #0277bd 100%);
+            color: white;
+            padding: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .back-btn {
+            background: rgba(255,255,255,0.2);
+            border: none;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+        }
+        
+        .back-btn:hover {
+            background: rgba(255,255,255,0.3);
+            transform: translateY(-1px);
+        }
+        
+        .scanner-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin: 0;
+        }
+        
+        /* スキャナービューコンテナ */
+        .scanner-container {
+            position: relative;
+            width: 100%;
+            max-width: 640px;
+            margin: 0 auto;
+            background: #000;
+            flex: 1;
+            border-radius: 0;
+        }
+        
+        #scannerView {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        
+        /* スキャンフレームオーバーレイ */
+        .scan-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            pointer-events: none;
+        }
+        
+        .scan-frame {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 80%;
+            max-width: 400px;
+            height: 200px;
+            border: 3px solid var(--ok);
+            border-radius: 12px;
+            box-shadow: 0 0 0 9999px rgba(0,0,0,0.5);
+        }
+        
+        .scan-line {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, var(--ok), transparent);
+            animation: scan 2s linear infinite;
+        }
+        
+        @keyframes scan {
+            0%, 100% { top: 0; }
+            50% { top: calc(100% - 2px); }
+        }
+        
+        /* コントロールパネル */
+        .scanner-controls {
+            background: var(--card);
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            border-top: 1px solid var(--border);
+        }
+        
+        .control-row {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        
+        .control-btn {
+            flex: 1;
+            max-width: 200px;
+            min-width: 140px;
+            padding: 14px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            transition: all 0.2s ease;
+        }
+        
+        .btn-start {
+            background: var(--ok);
+            color: white;
+            box-shadow: 0 2px 8px rgba(46, 125, 50, 0.3);
+        }
+        
+        .btn-start:hover {
+            background: #2e7d32;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(46, 125, 50, 0.4);
+        }
+        
+        .btn-stop {
+            background: var(--bad);
+            color: white;
+            box-shadow: 0 2px 8px rgba(198, 40, 40, 0.3);
+        }
+        
+        .btn-stop:hover {
+            background: #c62828;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(198, 40, 40, 0.4);
+        }
+        
+        .control-btn:active {
+            transform: scale(0.98);
+        }
+        
+        /* カメラ選択 */
+        .camera-select {
+            width: 100%;
+            padding: 12px 16px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: white;
+            color: var(--text);
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .camera-select:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(3,155,229,0.1);
+        }
+        
+        /* ステータスパネル */
+        .status-panel {
+            background: white;
+            padding: 16px;
+            border-radius: 12px;
+            margin-bottom: 12px;
+            border: 1px solid var(--border);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        
+        .status-text {
+            font-size: 16px;
+            color: var(--text);
+            text-align: center;
+            margin-bottom: 8px;
+        }
+        
+        .result-text {
+            font-size: 18px;
+            font-weight: bold;
+            color: var(--primary);
+            text-align: center;
+            margin-bottom: 8px;
+        }
+        
+        .stats-text {
+            font-size: 14px;
+            color: var(--muted);
+            text-align: center;
+        }
+        
+        /* キューパネル */
+        .queue-panel {
+            background: var(--card);
+            padding: 20px;
+            max-height: 300px;
+            overflow-y: auto;
+            border-top: 1px solid var(--border);
+        }
+        
+        .queue-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+        
+        .queue-title {
+            color: var(--text);
+            font-size: 18px;
+            font-weight: 600;
+        }
+        
+        .queue-count {
+            background: var(--ok);
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        
+        .queue-item {
+            background: var(--bg);
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            color: var(--text);
+            border: 1px solid var(--border);
+            transition: all 0.2s ease;
+        }
+        
+        .queue-item:hover {
+            border-color: var(--primary);
+            transform: translateX(4px);
+        }
+        
+        .queue-isbn {
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        
+        .queue-remove {
+            background: var(--bad);
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s ease;
+        }
+        
+        .queue-remove:hover {
+            background: #c62828;
+            transform: scale(1.05);
+        }
+        
+        /* アクションボタン */
+        .action-buttons {
+            display: flex;
+            gap: 12px;
+            margin-top: 16px;
+        }
+        
+        .action-btn {
+            flex: 1;
+            padding: 14px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .btn-register {
+            background: var(--ok);
+            color: white;
+            box-shadow: 0 2px 8px rgba(46, 125, 50, 0.3);
+        }
+        
+        .btn-register:hover {
+            background: #2e7d32;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(46, 125, 50, 0.4);
+        }
+        
+        .btn-clear {
+            background: #757575;
+            color: white;
+        }
+        
+        .btn-clear:hover {
+            background: #616161;
+            transform: translateY(-2px);
+        }
+        
+        /* レスポンシブ対応 */
+        @media (max-width: 768px) {
+            .scanner-header {
+                padding: 12px;
+            }
+            
+            .scanner-title {
+                font-size: 16px;
+            }
+            
+            .scanner-controls {
+                padding: 16px;
+            }
+            
+            .control-btn {
+                max-width: none;
+                width: 100%;
+            }
+            
+            .control-row {
+                flex-direction: column;
+            }
+            
+            .queue-panel {
+                padding: 16px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="scanner-page">
+        <div class="scanner-header">
+            <div class="header-left">
+                <button class="back-btn" onclick="goBack()">← 戻る</button>
+                <h1 class="scanner-title">📱 バーコードスキャナー</h1>
+            </div>
+        </div>
+
+        <div class="scanner-container">
+            <div id="scannerView"></div>
+            <div class="scan-overlay">
+                <div class="scan-frame">
+                    <div class="scan-line"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="scanner-controls">
+            <div class="status-panel">
+                <div id="statusText" class="status-text">📷 カメラを起動してください</div>
+                <div id="resultText" class="result-text"></div>
+                <div id="statsText" class="stats-text"></div>
+            </div>
+
+            <select id="cameraSelect" class="camera-select">
+                <option value="">カメラを選択...</option>
+            </select>
+
+            <div class="control-row">
+                <button id="startBtn" class="control-btn btn-start" onclick="startScanner()">
+                    📷 カメラ起動
+                </button>
+                <button id="stopBtn" class="control-btn btn-stop" onclick="stopScanner()" style="display: none;">
+                    ⏹️ カメラ停止
+                </button>
+            </div>
+        </div>
+
+        <div class="queue-panel" id="queuePanel" style="display: none;">
+            <div class="queue-header">
+                <span class="queue-title">📋 スキャンキュー</span>
+                <span class="queue-count" id="queueCount">0</span>
+            </div>
+            <div id="queueList"></div>
+            <div class="action-buttons">
+                <button class="action-btn btn-register" onclick="registerAll()">
+                    ✅ 全て登録
+                </button>
+                <button class="action-btn btn-clear" onclick="clearQueue()">
+                    🗑️ クリア
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quagga.js -->
+    <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2@1.8.4/dist/quagga.min.js"></script>
+    
+    <!-- Firebase -->
+    <script src="../lib/firebase-config.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
+    <script src="../lib/firebase-init.js"></script>
+
+    <script>
+        // スキャナー管理
+        let running = false;
+        let scanQueue = [];
+        let lastScanned = '';
+        let lastScanTime = 0;
+        let scanCount = 0;
+        let successCount = 0;
+        let currentCameraId = null; // 現在使用中のカメラID
+        
+        const $ = (id) => document.getElementById(id);
+        const setText = (id, txt) => { const el = $(id); if (el) el.textContent = txt; };
+        
+        // ビープ音
+        function beep(success = true) {
+            try {
+                const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.frequency.value = success ? 1200 : 400;
+                osc.type = 'sine';
+                gain.gain.setValueAtTime(0.3, ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.1);
+                osc.start(ctx.currentTime);
+                osc.stop(ctx.currentTime + 0.1);
+            } catch(e) {}
+        }
+        
+        // バイブレーション
+        function vibrate(pattern = [50]) {
+            try {
+                if (navigator.vibrate) navigator.vibrate(pattern);
+            } catch(e) {}
+        }
+        
+        // 統計更新
+        function updateStats() {
+            const rate = scanCount > 0 ? Math.round(successCount/scanCount*100) : 0;
+            setText('statsText', `📊 スキャン: ${scanCount}回 | 成功: ${successCount}回 | 成功率: ${rate}%`);
+        }
+        
+        // ISBN抽出
+        function extractIsbn13(raw) {
+            if (!raw) return '';
+            let text = String(raw).replace(/^\s*ISBN(?:-1[03])?:?\s*/i, '').replace(/[-\s]/g, '');
+            let m13 = text.match(/\b(97[89]\d{10})\b/) || String(raw).match(/\b(97[89]\d{10})\b/);
+            if (m13) return m13[1];
+            
+            // ISBN-10を13に変換
+            let m10 = text.match(/\b(\d{9}[\dXx])\b/) || String(raw).match(/\b(\d{9}[\dXx])\b/);
+            if (m10) {
+                const digits = m10[1].replace(/[^0-9Xx]/g, '');
+                if (digits.length === 10) {
+                    const core = '978' + digits.substring(0,9);
+                    let sum = 0;
+                    for (let i=0; i<core.length; i++){
+                        const n = parseInt(core[i], 10);
+                        sum += (i % 2 === 0) ? n : n*3;
+                    }
+                    const cd = (10 - (sum % 10)) % 10;
+                    return core + String(cd);
+                }
+            }
+            
+            const digits = String(raw).replace(/[^0-9Xx]/g, '');
+            if (digits.length === 13 && /^97[89]/.test(digits)) return digits;
+            return '';
+        }
+        
+        // スキャン結果処理
+        async function handleScanned(code) {
+            const now = Date.now();
+            const isbn13 = extractIsbn13(code);
+            
+            // 500ms以内の重複スキャンを無視
+            if (code === lastScanned && (now - lastScanTime) < 500) return;
+            
+            lastScanned = code;
+            lastScanTime = now;
+            scanCount++;
+            
+            setText('resultText', `📖 読取: ${isbn13 || code}`);
+            
+            if (!isbn13) {
+                setText('statusText', '❌ 有効なISBNではありません');
+                beep(false);
+                vibrate([100, 50, 100]);
+                successCount--;
+                if (successCount < 0) successCount = 0;
+                updateStats();
+                return;
+            }
+            
+            // キューに追加（重複チェック）
+            if (!scanQueue.includes(isbn13)) {
+                scanQueue.push(isbn13);
+                renderQueue();
+                setText('statusText', '✅ キューに追加しました');
+                beep(true);
+                vibrate([50]);
+                successCount++;
+                updateStats();
+                
+                // 1秒後に次のスキャン準備
+                setTimeout(() => {
+                    setText('statusText', '📷 次のバーコードをスキャンしてください');
+                }, 1000);
+            } else {
+                setText('statusText', '⚠️ すでにキューに存在します');
+                beep(false);
+                vibrate([50, 50, 50]);
+            }
+        }
+        
+        // キュー表示
+        function renderQueue() {
+            const panel = $('queuePanel');
+            const list = $('queueList');
+            const count = $('queueCount');
+            
+            if (scanQueue.length === 0) {
+                panel.style.display = 'none';
+                return;
+            }
+            
+            panel.style.display = 'block';
+            count.textContent = scanQueue.length;
+            
+            let html = '';
+            scanQueue.forEach((isbn, idx) => {
+                html += `
+                    <div class="queue-item">
+                        <span class="queue-isbn">${isbn}</span>
+                        <button class="queue-remove" onclick="removeFromQueue(${idx})">削除</button>
+                    </div>
+                `;
+            });
+            list.innerHTML = html;
+        }
+        
+        // キューから削除
+        function removeFromQueue(index) {
+            scanQueue.splice(index, 1);
+            renderQueue();
+        }
+        
+        // キュークリア
+        function clearQueue() {
+            if (!confirm('キューをクリアしますか？')) return;
+            scanQueue = [];
+            renderQueue();
+        }
+        
+        // カメラデバイス取得
+        async function getVideoInputs() {
+            let devices = await navigator.mediaDevices.enumerateDevices();
+            if (!devices.some(d => d.kind === 'videoinput' && d.label)){
+                try {
+                    const tmp = await navigator.mediaDevices.getUserMedia({ video: true });
+                    tmp.getTracks().forEach(t => t.stop());
+                } catch(_) {}
+                devices = await navigator.mediaDevices.enumerateDevices();
+            }
+            return devices.filter(d => d.kind === 'videoinput');
+        }
+        
+        // 背面カメラ選択
+        function pickBackCamera(devices) {
+            const back = devices.find(d => {
+                const label = (d.label || '').toLowerCase();
+                return label.includes('back') || 
+                       label.includes('rear') || 
+                       label.includes('environment') ||
+                       label.includes('背面') ||
+                       label.includes('外側');
+            });
+            return back ? back.deviceId : (devices.length > 1 ? devices[devices.length - 1].deviceId : devices[0]?.deviceId);
+        }
+        
+        // カメラ選択UI更新
+        async function updateCameraSelect(devices, selectId = null) {
+            const select = $('cameraSelect');
+            if (!select) return;
+            
+            select.innerHTML = '';
+            devices.forEach(d => {
+                const opt = document.createElement('option');
+                opt.value = d.deviceId;
+                let label = d.label || `カメラ ${devices.indexOf(d) + 1}`;
+                if (/back|rear|environment|背面|外側/i.test(d.label)) {
+                    label = '📷 背面: ' + label;
+                } else if (/front|user|face|前面|内側/i.test(d.label)) {
+                    label = '🤳 前面: ' + label;
+                }
+                opt.textContent = label;
+                select.appendChild(opt);
+            });
+            
+            // 現在のカメラまたは指定されたカメラを選択
+            if (selectId) {
+                select.value = selectId;
+                currentCameraId = selectId;
+            } else if (currentCameraId) {
+                select.value = currentCameraId;
+            }
+        }
+        
+        // 指定カメラでスキャナー開始
+        async function startScannerWithCamera(cameraId) {
+            if (running) {
+                await stopScanner();
+                await new Promise(r => setTimeout(r, 300));
+            }
+            
+            const isSecure = location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+            if (!isSecure) {
+                setText('statusText', '❌ HTTPSまたはlocalhostが必要です');
+                return;
+            }
+            
+            setText('statusText', '📷 カメラを起動しています...');
+            
+            try {
+                const constraints = cameraId
+                    ? { deviceId: { exact: cameraId }, width: { ideal: 1920 }, height: { ideal: 1080 } }
+                    : { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } };
+                
+                const config = {
+                    inputStream: {
+                        type: 'LiveStream',
+                        target: document.querySelector('#scannerView'),
+                        constraints,
+                        area: { top: "15%", right: "10%", left: "10%", bottom: "15%" }
+                    },
+                    decoder: {
+                        readers: [ 
+                            'ean_reader', 
+                            'ean_8_reader', 
+                            'code_128_reader', 
+                            'code_39_reader'
+                        ],
+                        multiple: false
+                    },
+                    locate: true,
+                    locator: {
+                        patchSize: "medium",
+                        halfSample: false
+                    },
+                    numOfWorkers: Math.min(4, navigator.hardwareConcurrency || 2),
+                    frequency: 10
+                };
+                
+                await new Promise((resolve, reject) => {
+                    Quagga.init(config, (err) => {
+                        if (err) {
+                            reject(err);
+                            return;
+                        }
+                        Quagga.start();
+                        resolve();
+                    });
+                });
+                
+                running = true;
+                currentCameraId = cameraId;
+                if (scanCount === 0) {
+                    scanCount = 0;
+                    successCount = 0;
+                }
+                updateStats();
+                
+                $('startBtn').style.display = 'none';
+                $('stopBtn').style.display = 'inline-flex';
+                
+                setText('statusText', '✅ スキャン待機中（バーコードをカメラに向けてください）');
+                
+                // 検出精度向上: 連続2回検出で確定
+                let consecutiveDetections = new Map();
+                
+                Quagga.onDetected(async (data) => {
+                    if (!running) return;
+                    
+                    try {
+                        const code = data?.codeResult?.code || '';
+                        if (!code) return;
+                        
+                        // 品質チェック
+                        const errors = data?.codeResult?.decodedCodes?.filter(d => d.error).length || 0;
+                        const total = data?.codeResult?.decodedCodes?.length || 1;
+                        const errorRate = errors / total;
+                        
+                        if (errorRate > 0.3) return;
+                        
+                        // 連続検出カウント
+                        const count = (consecutiveDetections.get(code) || 0) + 1;
+                        consecutiveDetections.set(code, count);
+                        
+                        // 2回連続検出で処理
+                        if (count >= 2 && code !== lastScanned) {
+                            consecutiveDetections.clear();
+                            await handleScanned(code);
+                        }
+                        
+                        // 古いカウントをクリア
+                        if (consecutiveDetections.size > 10) {
+                            consecutiveDetections.clear();
+                        }
+                    } catch (e) {
+                        console.error('Scan error:', e);
+                    }
+                });
+                
+                beep(true);
+                
+            } catch (e) {
+                console.error('Scanner start error:', e);
+                const msg = String(e?.message || e);
+                if (/NotAllowedError|Permission/i.test(msg)) {
+                    setText('statusText', '❌ カメラアクセスが拒否されました');
+                } else if (/NotFoundError/i.test(msg)) {
+                    setText('statusText', '❌ カメラが見つかりません');
+                } else {
+                    setText('statusText', `❌ エラー: ${msg}`);
+                }
+                beep(false);
+            }
+        }
+        
+        // スキャナー開始
+        async function startScanner() {
+            if (running) return;
+            
+            try {
+                const devices = await getVideoInputs();
+                if (!devices.length) {
+                    setText('statusText', '❌ カメラが見つかりません');
+                    return;
+                }
+                
+                // カメラ選択UIを更新
+                const selectedCamera = $('cameraSelect')?.value;
+                await updateCameraSelect(devices);
+                
+                // 選択されているカメラ、または背面カメラを使用
+                const cameraId = selectedCamera || pickBackCamera(devices);
+                await startScannerWithCamera(cameraId);
+                
+                // 選択状態を更新
+                if ($('cameraSelect')) {
+                    $('cameraSelect').value = cameraId;
+                }
+                
+            } catch (e) {
+                console.error('Scanner start error:', e);
+                setText('statusText', `❌ エラー: ${e.message}`);
+                beep(false);
+            }
+        }
+        
+        // スキャナー停止
+        async function stopScanner() {
+            try {
+                running = false;
+                
+                if (window.Quagga){
+                    try { Quagga.offDetected(); } catch(_){}
+                    try { Quagga.stop(); } catch(_){}
+                }
+                
+                $('startBtn').style.display = 'inline-flex';
+                $('stopBtn').style.display = 'none';
+                
+                setText('statusText', '⏸️ カメラを停止しました');
+                
+                lastScanned = '';
+                lastScanTime = 0;
+                
+            } catch (e) {
+                console.error('Stop scanner error:', e);
+            }
+        }
+        
+        // カメラ切替
+        $('cameraSelect')?.addEventListener('change', async (e) => {
+            const selectedCamera = e.target.value;
+            if (!selectedCamera) return;
+            
+            setText('statusText', '📷 カメラを切り替えています...');
+            
+            try {
+                // スキャナーを再起動
+                await startScannerWithCamera(selectedCamera);
+                beep(true);
+            } catch (e) {
+                console.error('Camera switch error:', e);
+                setText('statusText', '❌ カメラの切り替えに失敗しました');
+                beep(false);
+            }
+        });
+        
+        // 一括登録
+        async function registerAll() {
+            if (scanQueue.length === 0) {
+                alert('登録するISBNがありません');
+                return;
+            }
+            
+            // admin.htmlに戻ってキューを渡す
+            sessionStorage.setItem('adminScanQueue', JSON.stringify(scanQueue));
+            window.location.href = 'admin.html?tab=quick';
+        }
+        
+        // 戻る
+        function goBack() {
+            if (running) {
+                if (!confirm('スキャンを中止して戻りますか？')) return;
+                stopScanner();
+            }
+            window.location.href = 'admin.html?tab=quick';
+        }
+        
+        // 初期化
+        document.addEventListener('DOMContentLoaded', async () => {
+            // カメラリストを初期表示
+            try {
+                const devices = await getVideoInputs();
+                if (devices.length > 0) {
+                    await updateCameraSelect(devices);
+                }
+            } catch (e) {
+                console.error('Failed to list cameras:', e);
+            }
+        });
+    </script>
+</body>
+</html>

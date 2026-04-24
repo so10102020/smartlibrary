@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>スマート貸出・返却 | LibraryCirculationSystem</title>
+    <link rel="stylesheet" href="/styles/styles.css?v=20260419-5">
+
+    <!-- Firebase設定を先に読み込む -->
+    <script src="../lib/firebase-config.js"></script>
+    
+    <!-- Firebase SDKs（同期読み込み） -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+    
+    <!-- Firebase初期化 -->
+    <script src="../lib/firebase-init.js"></script>
+
+    <!-- html5-qrcode -->
+    <script defer src="https://unpkg.com/html5-qrcode"></script>
+
+    <script defer src="../lib/guard.js"></script>
+    <script defer src="circulation.js"></script>
+    <script defer src="../scanner/barcode-scanner.js"></script>
+  </head>
+  <body class="has-drawer-nav page-circulation">
+    <main class="opac-body">
+      <section class="opac-shell">
+        <aside class="opac-rail" aria-label="メインメニュー">
+          <button type="button" class="opac-rail-close" id="navCloseBtn" aria-label="メニューを閉じる">×</button>
+          <div class="opac-rail-brand" aria-label="アプリ名">SmartLibrary</div>
+          <a href="/" class="opac-rail-btn" aria-label="検索">
+            <span class="opac-rail-icon" aria-hidden="true">🔎</span>
+            <span class="opac-rail-label">検索</span>
+          </a>
+          <a href="/user/circulation.html" class="opac-rail-btn active" aria-label="貸出返却">
+            <span class="opac-rail-icon" aria-hidden="true">📚</span>
+            <span class="opac-rail-label">貸出・返却</span>
+          </a>
+          <a href="/admin" class="opac-rail-btn" aria-label="管理">
+            <span class="opac-rail-icon" aria-hidden="true">🗂</span>
+            <span class="opac-rail-label">管理</span>
+          </a>
+          <a href="/user/mypage.html" class="opac-rail-btn" aria-label="マイページ">
+            <span class="opac-rail-icon" aria-hidden="true">👤</span>
+            <span class="opac-rail-label">マイページ</span>
+          </a>
+          <button type="button" class="opac-rail-btn opac-signout" onclick="signOut()" aria-label="ログアウト">
+            <span class="opac-rail-icon" aria-hidden="true">⎋</span>
+            <span class="opac-rail-label">ログアウト</span>
+          </button>
+        </aside>
+
+        <button type="button" class="opac-nav-backdrop" id="navBackdrop" aria-label="メニューを閉じる"></button>
+
+        <section class="opac-canvas opac-page-circulation">
+          <header class="opac-header opac-header-row">
+            <div class="opac-header-top">
+              <button type="button" class="opac-nav-toggle" id="navToggleBtn" aria-label="メニューを開く">☰</button>
+              <h1>貸出・返却</h1>
+            </div>
+            <div id="userInfo" class="opac-user-chip">読み込み中...</div>
+          </header>
+          <p class="muted opac-lead">本の背表紙をスキャンするだけで、自動的に貸出・返却を処理できます。</p>
+
+          <div class="opac-stack">
+            <section class="opac-panel section">
+              <h2>本をスキャン</h2>
+              <div class="scanner-container opac-panel-inner">
+                <video id="cameraPreview" class="camera-video" style="display: none;"></video>
+                <canvas id="captureCanvas" style="display: none;"></canvas>
+
+                <div class="camera-controls">
+                  <button id="startCameraBtn" onclick="startCamera()">カメラ開始</button>
+                  <button id="captureBtn" onclick="captureAndScan()" style="display: none;">スキャン実行</button>
+                  <button id="stopCameraBtn" onclick="stopCamera()" style="display: none;">カメラ停止</button>
+                </div>
+
+                <div id="ocrProgress" class="hint"></div>
+                <div id="ocrResult" class="hint"></div>
+              </div>
+            </section>
+
+            <section class="opac-panel section" id="scanResultSection" style="display: none;">
+              <h2>スキャン結果</h2>
+              <div class="result-card">
+                <h3>認識されたテキスト</h3>
+                <div id="rawOcrText" class="debug-text">認識されたテキストがここに表示されます...</div>
+                <h3>検出された識別子</h3>
+                <div id="identifierSelection">識別子の検出を待機中...</div>
+              </div>
+            </section>
+
+            <section class="opac-panel section" id="bookInfoSection" style="display: none;">
+              <h2>蔵書情報</h2>
+              <div id="bookInfoCard" class="result-card"></div>
+              <div class="form-row" style="gap: 10px; margin-top: 10px;">
+                <button id="checkoutBtn" onclick="checkoutCurrent()" style="display:none;">貸出</button>
+                <button id="returnBtn" onclick="returnCurrent()" style="display:none;">返却</button>
+                <button id="rescanBtn" onclick="restartScan()">もう一度スキャン</button>
+              </div>
+            </section>
+
+            <section class="opac-panel section" id="actionResultSection" style="display: none;">
+              <h2>処理結果</h2>
+              <div id="actionResult" class="result-card"></div>
+            </section>
+
+            <section class="opac-panel section">
+              <details>
+                <summary class="opac-summary">手動入力（緊急時用）</summary>
+                <div style="margin-top: 15px;">
+                  <div class="form-row">
+                    <input id="manualBookId" type="text" placeholder="蔵書ID" aria-label="蔵書ID">
+                    <button onclick="processManualInput()">処理実行</button>
+                  </div>
+                  <div id="manualResult" class="hint"></div>
+                </div>
+              </details>
+            </section>
+          </div>
+        </section>
+      </section>
+    </main>
+    <script>
+      document.addEventListener('DOMContentLoaded', function () {
+        var body = document.body;
+        var openBtn = document.getElementById('navToggleBtn');
+        var closeBtn = document.getElementById('navCloseBtn');
+        var backdrop = document.getElementById('navBackdrop');
+
+        function openNav() {
+          body.classList.add('nav-open');
+        }
+
+        function closeNav() {
+          body.classList.remove('nav-open');
+        }
+
+        if (openBtn) openBtn.addEventListener('click', openNav);
+        if (closeBtn) closeBtn.addEventListener('click', closeNav);
+        if (backdrop) backdrop.addEventListener('click', closeNav);
+
+        document.addEventListener('keydown', function (e) {
+          if (e.key === 'Escape') closeNav();
+        });
+      });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>図書館蔵書検索 | LibraryCirculationSystem</title>
+    <link rel="stylesheet" href="/styles/styles.css?v=20260419-5">
+    <style>
+      /* Fallback for search controls if global CSS is stale/colliding */
+      body.page-search {
+        margin: 0;
+        background: #f4f6fa;
+        color: #1f2937;
+        font-family: "Segoe UI", "Yu Gothic UI", sans-serif;
+      }
+
+      .page-search .opac-searchbar-wrap {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-height: 56px;
+        border: 1px solid #cfd8e3;
+        border-radius: 10px;
+        background: #fff;
+        padding: 8px 10px;
+      }
+
+      .page-search .opac-searchbar-wrap:focus-within {
+        border-color: #7aa7e8;
+        box-shadow: 0 0 0 3px rgba(31, 111, 235, 0.12);
+      }
+
+      .page-search .opac-search-input {
+        flex: 1;
+        min-width: 0;
+        height: 40px;
+        border: 0;
+        outline: 0;
+        background: transparent;
+        padding: 0 4px;
+        color: #111827;
+        font-size: 15px;
+      }
+
+      .page-search .opac-search-btn {
+        height: 40px;
+        min-width: 92px;
+        border: 1px solid #1f6feb;
+        border-radius: 8px;
+        background: #1f6feb;
+        color: #fff;
+        font-size: 14px;
+        font-weight: 700;
+        line-height: 1;
+        cursor: pointer;
+        padding: 0 14px;
+      }
+
+      .page-search .opac-search-btn:hover {
+        background: #195ec7;
+        border-color: #195ec7;
+      }
+
+      .page-search .opac-filter-input {
+        width: 100%;
+        height: 40px;
+        border: 1px solid #cfd8e3;
+        border-radius: 8px;
+        padding: 0 10px;
+        background: #fff;
+        color: #1f2937;
+        font-size: 14px;
+      }
+
+      .page-search .opac-filter-input:focus {
+        outline: none;
+        border-color: #7aa7e8;
+        box-shadow: 0 0 0 3px rgba(31, 111, 235, 0.1);
+      }
+
+      @media (max-width: 720px) {
+        .page-search .opac-searchbar-wrap {
+          display: grid;
+          grid-template-columns: 24px minmax(0, 1fr);
+          gap: 8px;
+        }
+
+        .page-search .opac-search-btn {
+          grid-column: 1 / -1;
+          width: 100%;
+          min-width: 0;
+        }
+      }
+    </style>
+
+    <!-- Firebase設定を先に読み込む -->
+    <script src="../lib/firebase-config.js"></script>
+    
+    <!-- Firebase SDKs（同期読み込み） -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+    
+    <!-- Firebase初期化 -->
+    <script src="../lib/firebase-init.js"></script>
+
+    <!-- アプリ用スクリプト -->
+    <script defer src="../lib/opac.js"></script>
+    <script defer src="../lib/guard.js"></script>
+  </head>
+  <body class="page-search">
+    <main class="opac-body">
+      <section class="opac-shell">
+        <aside class="opac-rail" aria-label="メインメニュー">
+          <button type="button" class="opac-rail-close" id="navCloseBtn" aria-label="メニューを閉じる">×</button>
+          <div class="opac-rail-brand" aria-label="アプリ名">SmartLibrary</div>
+          <a href="/" class="opac-rail-btn active" aria-label="検索">
+            <span class="opac-rail-icon" aria-hidden="true">🔎</span>
+            <span class="opac-rail-label">検索</span>
+          </a>
+          <a href="/user/circulation.html" class="opac-rail-btn" aria-label="貸出返却">
+            <span class="opac-rail-icon" aria-hidden="true">📚</span>
+            <span class="opac-rail-label">貸出・返却</span>
+          </a>
+          <a href="/admin" class="opac-rail-btn" aria-label="管理">
+            <span class="opac-rail-icon" aria-hidden="true">🗂</span>
+            <span class="opac-rail-label">管理</span>
+          </a>
+          <a href="/user/mypage.html" class="opac-rail-btn" aria-label="マイページ">
+            <span class="opac-rail-icon" aria-hidden="true">👤</span>
+            <span class="opac-rail-label">マイページ</span>
+          </a>
+          <button type="button" class="opac-rail-btn opac-signout" onclick="signOut()" aria-label="ログアウト">
+            <span class="opac-rail-icon" aria-hidden="true">⎋</span>
+            <span class="opac-rail-label">ログアウト</span>
+          </button>
+        </aside>
+
+        <button type="button" class="opac-nav-backdrop" id="navBackdrop" aria-label="メニューを閉じる"></button>
+
+        <section class="opac-canvas">
+          <header class="opac-header">
+            <div class="opac-header-top">
+              <button type="button" class="opac-nav-toggle" id="navToggleBtn" aria-label="メニューを開く">☰</button>
+              <h1>蔵書検索</h1>
+            </div>
+            <p class="opac-page-note">タイトル・著者・ISBNで検索できます。必要なときだけジャンルと出版年で絞り込みできます。</p>
+          </header>
+
+          <div class="opac-searchbar-wrap">
+            <span class="opac-search-icon" aria-hidden="true">⌕</span>
+            <input
+              type="text"
+              id="searchInput"
+              placeholder="タイトル・著者・ISBNで検索"
+              aria-label="検索キーワード"
+              class="opac-search-input"
+            >
+            <button type="button" onclick="searchBooks(event)" class="opac-search-btn" aria-label="検索実行">検索</button>
+          </div>
+
+          <div class="opac-main-grid">
+            <aside class="opac-filters" aria-label="検索フィルター">
+              <div class="opac-filter-group">
+                <label for="categoryFilter">ジャンル</label>
+                <select id="categoryFilter" class="opac-filter-input">
+                  <option value="">すべて</option>
+                  <option value="文学">文学</option>
+                  <option value="科学">科学</option>
+                  <option value="歴史">歴史</option>
+                  <option value="実用書">実用書</option>
+                </select>
+              </div>
+
+              <div class="opac-filter-group">
+                <label for="pubRange">出版年（この年まで）</label>
+                <input id="pubRange" type="range" min="1980" max="2026" value="2026" class="opac-range" aria-label="出版年">
+                <div id="pubRangeValue" class="opac-range-value">指定なし</div>
+              </div>
+            </aside>
+
+            <section class="opac-results-pane" aria-live="polite">
+              <div class="results-header opac-results-header">
+                <h2 id="resultsTitle">検索結果</h2>
+                <div id="resultsCount" class="results-count"></div>
+              </div>
+
+              <div id="resultsContainer" class="results-grid opac-results-grid" aria-live="polite">
+                <div class="no-results-message opac-empty-state">
+                  <div class="no-results-icon">📖</div>
+                  <h3>検索を開始してください</h3>
+                  <p>上の検索ボックスにキーワードを入力すると結果が表示されます。</p>
+                </div>
+              </div>
+
+              <div id="loadingIndicator" class="loading-indicator" style="display: none;">
+                <div class="spinner"></div>
+                <p>検索中...</p>
+              </div>
+            </section>
+          </div>
+        </section>
+      </section>
+
+      <div id="detailModal" class="modal" aria-hidden="true" role="dialog" aria-modal="true" style="display:none;">
+        <div class="modal-content">
+          <button class="modal-close" onclick="closeBookDetail()" aria-label="閉じる">×</button>
+          <div id="detailBody"></div>
+          <div class="modal-actions">
+            <button id="detailReserveBtn" class="reserve-btn" onclick="confirmReserveFromDetail()">この本を予約</button>
+          </div>
+        </div>
+        <div class="modal-backdrop" onclick="closeBookDetail()"></div>
+      </div>
+    </main>
+    <script>
+      document.addEventListener('DOMContentLoaded', function () {
+        var body = document.body;
+        var openBtn = document.getElementById('navToggleBtn');
+        var closeBtn = document.getElementById('navCloseBtn');
+        var backdrop = document.getElementById('navBackdrop');
+
+        function openNav() {
+          body.classList.add('nav-open');
+        }
+
+        function closeNav() {
+          body.classList.remove('nav-open');
+        }
+
+        if (openBtn) openBtn.addEventListener('click', openNav);
+        if (closeBtn) closeBtn.addEventListener('click', closeNav);
+        if (backdrop) backdrop.addEventListener('click', closeNav);
+
+        document.addEventListener('keydown', function (e) {
+          if (e.key === 'Escape') closeNav();
+        });
+      });
+    </script>
+  </body>
+</html>
